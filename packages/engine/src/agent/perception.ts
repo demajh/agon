@@ -1,4 +1,4 @@
-import type { Observation, PersonaTraits } from '@agon/spec';
+import type { Observation, PersonaInstance, PersonaTraits } from '@agon/spec';
 
 export interface PerceptionLimits {
   maxTextChars: number;
@@ -29,4 +29,20 @@ export function pruneObservation(observation: Observation, limits: PerceptionLim
     text !== observation.text ||
     interactive.length !== observation.interactive.length;
   return { ...observation, text, interactive, truncated };
+}
+
+/**
+ * Limits for a sampled persona: agents read the catalog in proportion to how carefully their
+ * harness reads descriptions and see every ref; people are limited by attention.
+ */
+export function perceptionLimitsFor(
+  persona: Pick<PersonaInstance, 'traits' | 'harness'>,
+): PerceptionLimits {
+  if (persona.harness) {
+    return {
+      maxTextChars: Math.round(1500 + persona.harness.readsDescriptions * 10_500),
+      maxInteractive: 60,
+    };
+  }
+  return perceptionLimits(persona.traits);
 }

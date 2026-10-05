@@ -47,3 +47,44 @@ export function testConfig(overrides: Partial<AgonConfigInput> = {}): AgonConfig
   };
   return AgonConfigSchema.parse({ ...base, ...overrides });
 }
+
+/** A valid config for the fake ledger tool server, driven by an agent persona. */
+export function agentTestConfig(overrides: Partial<AgonConfigInput> = {}): AgonConfig {
+  const base: AgonConfigInput = {
+    version: 1,
+    name: 'ledger-mcp-test',
+    target: {
+      kind: 'mcp',
+      variants: {
+        control: { url: 'mcp://control.test' },
+        treatment: { url: 'mcp://treatment.test' },
+      },
+      capture: { screenshots: 'never' },
+    },
+    personas: [
+      {
+        id: 'bot',
+        name: 'Terminal agent',
+        summary: 'You are an AI coding assistant working for a developer.',
+        traits: { role: 'coding agent' },
+        harness: { loop: 'react', maxToolCalls: 10, retries: 1, readsDescriptions: 0.9 },
+      },
+    ],
+    population: { seed: 5, size: 2, personas: [{ use: 'bot' }], traitJitter: 0 },
+    scenarios: [
+      {
+        id: 'create-books',
+        goal: 'Create a project called Books.',
+        success: 'text:created project "Books"',
+        maxSteps: 8,
+        budgetUsd: 1,
+      },
+    ],
+    metrics: [
+      { id: 'tool_calls', type: 'count', event: '$agon_tool_call' },
+      { id: 'tool_errors', type: 'count', event: '$agon_tool_error' },
+    ],
+    defaults: { model: 'fake/model-1', temperature: 0 },
+  };
+  return AgonConfigSchema.parse({ ...base, ...overrides });
+}

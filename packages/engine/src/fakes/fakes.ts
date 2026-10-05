@@ -293,7 +293,7 @@ export function parsePrompt(message: string): ParsedPrompt {
   }
   const refs = new Map<string, { role: string; name: string; value?: string }>();
   for (const m of message.matchAll(
-    /^\[(e\d+)\] (\w+)(?: "([^"]*)")?(?: \((empty)\)| \(value: "([^"]*)"\))?/gm,
+    /^\[([a-z]\d+)\] (\w+)(?: "([^"]*)")?(?: \((empty)\)| \(value: "([^"]*)"\))?/gm,
   )) {
     const [, ref, role, name, empty, value] = m;
     refs.set(ref as string, {
@@ -417,3 +417,173 @@ export class MemoryRecorder implements Recorder {
     this.finishedRuns.push({ run: structuredClone(run), result });
   }
 }
+
+// ---------------------------------------------------------------------------
+// A fake MCP-style tool server behind the Adapter interface.
+// ---------------------------------------------------------------------------
+
+export interface FakeToolState {
+  projects: string[];
+  calls: number;
+}
+
+export interface FakeTool {
+  name: string;
+  description: string;
+  /** Human-readable schema summary shown in the catalog. */
+  schema: string;
+  run: (args: Record<string, unknown>, state: FakeToolState) => { text: string; isError?: boolean };
+}
+
+export const ledgerTools: FakeTool[] = [
+  {
+    name: 'create_project',
+    description: 'Create a bookkeeping project',
+    schema: '{ name: string (required), currency?: "USD" | "EUR" }',
+    run: (args, state) => {
+      if (typeof args['name'] !== 'string' || args['name'].length === 0) {
+        return { text: 'invalid arguments: name is required', isError: true };
+      }
+      state.projects.push(args['name']);
+      return { text: `created project "${args['name']}" (p${state.projects.length})` };
+    },
+  },
+  {
+    name: 'list_projects',
+    description: 'List existing projects',
+    schema: '{}',
+    run: (_args, state) => ({
+      text: state.projects.length ? state.projects.join(', ') : '(no projects)',
+    }),
+  },
+  {
+    name: 'delete_project',
+    description: 'Delete a project permanently (destructive)',
+    schema: '{ id: string (required) }',
+    run: () => ({ text: 'deleted' }),
+  },
+];
+
+export class FakeToolSession implements AdapterSession {
+  readonly kind = 'mcp' as const;
+  readonly state: FakeToolState = { projects: [], calls: 0 };
+  lastResult = '(none yet)';
+  lastError: string | undefined;
+  closed = false;
+  private buffer: EventDraft[] = [];
+
+  constructor(
+    private readonly tools: FakeTool[],
+    private readonly url: string,
+    readonly options: OpenOptions,
+  ) {}
+
+  async observe(): Promise<Observation> {
+    const catalog = this.tools
+      .map((t, i) => `t${i + 1} ${t.name} — ${t.description} ${t.schema}`)
+      .join('\n');
+    const text = `TOOLS (${this.tools.length}):\n${catalog}\nLAST RESULT: ${this.lastResult}${this.lastError ? `\nLAST ERROR: ${this.lastError}` : ''}`;
+    const errors = this.lastError ? [this.lastError] : [];
+    this.lastError = undefined;
+    return {
+      url: this.url,
+      title: 'Fake ledger MCP server',
+      text,
+      interactive: this.tools.map((t, i) => ({
+        ref: `t${i + 1}`,
+        role: 'tool',
+        name: t.name,
+        disabled: false,
+      })),
+      errors,
+      truncated: false,
+      hash: `${this.tools.length}|${this.lastResult}`,
+      capturedAt: nowIso(),
+    };
+  }
+
+  async act(action: Action): Promise<ActResult> {
+    if (action.type === 'tool_call') {
+      const index = Number.parseInt(action.ref.replace(/^t/, ''), 10) - 1;
+      const tool = this.tools[index];
+      if (!tool) return { ok: false, error: `no such ref ${action.ref}`, navigated: false };
+      this.state.calls++;
+      const outcome = tool.run(action.arguments, this.state);
+      this.buffer.push({
+        timestamp: nowIso(),
+        event: '$agon_tool_call',
+        source: 'inferred',
+        properties: {
+          tool: tool.name,
+          arguments: action.arguments,
+          is_error: outcome.isError === true,
+        },
+      });
+      if (outcome.isError) {
+        this.lastError = outcome.text;
+        this.buffer.push({
+          timestamp: nowIso(),
+          event: '$agon_tool_error',
+          source: 'inferred',
+          properties: { tool: tool.name, error: outcome.text },
+        });
+        return { ok: false, error: outcome.text, navigated: false };
+      }
+      this.lastResult = outcome.text;
+      return { ok: true, navigated: false };
+    }
+    if (action.type === 'click') {
+      return {
+        ok: false,
+        error: 'tools are called with tool_call and arguments',
+        navigated: false,
+      };
+    }
+    if (action.type === 'wait' || action.type === 'done' || action.type === 'give_up') {
+      return { ok: true, navigated: false };
+    }
+    return {
+      ok: false,
+      error: `${action.type} is not applicable to an MCP server`,
+      navigated: false,
+    };
+  }
+
+  drainEvents(): EventDraft[] {
+    const out = this.buffer;
+    this.buffer = [];
+    return out;
+  }
+
+  async screenshot(): Promise<Uint8Array | undefined> {
+    return undefined;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+export class FakeToolAdapter implements Adapter {
+  readonly kind = 'mcp' as const;
+  readonly sessions: FakeToolSession[] = [];
+  constructor(private readonly tools: FakeTool[] = ledgerTools) {}
+
+  async open(variant: VariantSpec, options: OpenOptions): Promise<AdapterSession> {
+    const session = new FakeToolSession(this.tools, variant.url ?? 'mcp://fake', options);
+    this.sessions.push(session);
+    return session;
+  }
+}
+
+/** An agent that creates the "Books" project and stops. */
+export const toolUser: UserPolicy = (p) => {
+  if (/created project "Books"/.test(p.text))
+    return trace({ type: 'done', reason: 'The project exists.' });
+  if (p.refs.has('t1'))
+    return trace({ type: 'tool_call', ref: 't1', arguments: { name: 'Books' } });
+  return trace(
+    { type: 'give_up', reason: 'No usable tools.' },
+    { progress: 'none', feeling: 'confused' },
+  );
+};

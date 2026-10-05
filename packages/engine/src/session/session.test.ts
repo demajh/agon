@@ -5,15 +5,18 @@ import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 import { resolvePersonas } from '../population/personas.js';
 import { planSessions } from '../population/sampler.js';
-import { testConfig } from '../fakes/config.js';
+import { agentTestConfig, testConfig } from '../fakes/config.js';
 import {
   FakeAdapter,
   FakeLlm,
+  FakeToolAdapter,
   MemoryRecorder,
   happyUser,
   ledgerlySite,
+  toolUser,
   type UserPolicy,
 } from '../fakes/fakes.js';
+import { perceptionLimitsFor } from '../agent/perception.js';
 import { computeSessionMetrics } from './metrics.js';
 import { runSession } from './runner.js';
 import { criterionMet, urlMatches } from './success.js';
@@ -282,6 +285,99 @@ describe('runSession', () => {
       navigated: false,
     });
     expect(session.outcome).toBe('success');
+  });
+});
+
+describe('agent personas on mcp targets', () => {
+  it('drives an agent through tool calls with agent prompts, tool events and metrics', async () => {
+    const config = agentTestConfig();
+    const personas = resolvePersonas(config);
+    const [plan] = planSessions(config, personas, {
+      runId: 'run_mcp',
+      variants: ['control'],
+      seed: 1,
+      size: 1,
+      defaultModel: config.defaults.model,
+    });
+    expect(plan?.persona.harness?.loop).toBe('react');
+    const llm = new FakeLlm(toolUser);
+    const adapter = new FakeToolAdapter();
+    const { session, steps, events } = await runSession(
+      { runId: 'run_mcp', config, plan: plan!, variantSpec: config.target.variants['control']! },
+      { llm, adapter, recorder: new MemoryRecorder(), logger, cwd: process.cwd() },
+    );
+    expect(session.outcome).toBe('success');
+    expect(steps.map((s) => s.decision.action.type)).toEqual(['tool_call']);
+    expect(events.map((e) => e.event)).toContain('$agon_tool_call');
+    expect(events.find((e) => e.event === '$agon_tool_call')?.properties).toMatchObject({
+      tool: 'create_project',
+      agon_simulated: true,
+    });
+    expect(session.metrics).toMatchObject({ scenario_success: 1, tool_calls: 1, tool_errors: 0 });
+    expect(adapter.sessions[0]?.state.projects).toEqual(['Books']);
+
+    const first = llm.requests[0]!;
+    expect(first.system).toContain('AI agent');
+    expect(first.system).toContain('budget of 10 tool calls');
+    expect(first.system).toContain('an MCP server');
+    const message = first.messages[0]!.content;
+    expect(message).toContain('SERVER: mcp://control.test');
+    expect(message).toContain('[t1] tool "create_project"');
+    expect(message).toContain('tool_call(ref, arguments)');
+    expect(message).not.toContain('click(ref) · fill');
+    expect(perceptionLimitsFor(plan!.persona)).toEqual({ maxTextChars: 10950, maxInteractive: 60 });
+  });
+
+  it('reports tool errors as failed actions and lets the agent recover', async () => {
+    let attempts = 0;
+    const clumsyAgent: UserPolicy = (p) => {
+      if (/created project "Books"/.test(p.text)) {
+        return {
+          perception: 'ok',
+          thinking: 'done',
+          feeling: 'confident',
+          progress: 'progress',
+          action: { type: 'done', reason: 'done' },
+        };
+      }
+      attempts++;
+      return {
+        perception: 'tools',
+        thinking: attempts === 1 ? 'try without a name' : 'add the name',
+        feeling: attempts === 1 ? 'confident' : 'confused',
+        progress: attempts === 1 ? 'progress' : 'none',
+        action: {
+          type: 'tool_call',
+          ref: 't1',
+          arguments: attempts === 1 ? {} : { name: 'Books' },
+        },
+      };
+    };
+    const config = agentTestConfig();
+    const [plan] = planSessions(config, resolvePersonas(config), {
+      runId: 'run_mcp2',
+      variants: ['control'],
+      seed: 1,
+      size: 1,
+      defaultModel: 'fake/m',
+    });
+    const { session, steps } = await runSession(
+      { runId: 'run_mcp2', config, plan: plan!, variantSpec: config.target.variants['control']! },
+      {
+        llm: new FakeLlm(clumsyAgent),
+        adapter: new FakeToolAdapter(),
+        recorder: new MemoryRecorder(),
+        logger,
+        cwd: process.cwd(),
+      },
+    );
+    expect(steps[0]?.result).toMatchObject({
+      ok: false,
+      error: 'invalid arguments: name is required',
+    });
+    expect(steps[1]?.observation.errors).toEqual(['invalid arguments: name is required']);
+    expect(session.outcome).toBe('success');
+    expect(session.metrics).toMatchObject({ tool_calls: 2, tool_errors: 1 });
   });
 });
 

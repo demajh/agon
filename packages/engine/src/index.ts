@@ -22,9 +22,16 @@ export {
   type PatienceParams,
   type PatienceInput,
 } from './agent/patience.js';
-export { perceptionLimits, pruneObservation, type PerceptionLimits } from './agent/perception.js';
+export {
+  perceptionLimits,
+  perceptionLimitsFor,
+  pruneObservation,
+  type PerceptionLimits,
+} from './agent/perception.js';
 export {
   buildSystemPrompt,
+  buildAgentSystemPrompt,
+  usesAgentPrompt,
   buildStepMessage,
   renderObservation,
   describeAction,

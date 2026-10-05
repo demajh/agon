@@ -27,7 +27,7 @@ import {
   updatePatience,
   type PatienceParams,
 } from '../agent/patience.js';
-import { perceptionLimits, pruneObservation } from '../agent/perception.js';
+import { perceptionLimitsFor, pruneObservation } from '../agent/perception.js';
 import { buildStepMessage, buildSystemPrompt, summarizeStep } from '../agent/prompts.js';
 import { decideNextAction } from '../agent/user-agent.js';
 import type { SessionPlan } from '../population/sampler.js';
@@ -138,7 +138,8 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   });
 
   const rng = createRng(hashSeed(persona.seed, 'patience'));
-  const limits = perceptionLimits(persona.traits);
+  const kind = config.target.kind;
+  const limits = perceptionLimitsFor(persona);
   let patience = initialPatience(persona.traits, patienceParams);
   const history: string[] = [];
   let lastAction: Action | undefined;
@@ -185,7 +186,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         start_path: scenario.startPath,
       }),
     ]);
-    const system = buildSystemPrompt({ persona, scenario, credentials });
+    const system = buildSystemPrompt({ persona, scenario, credentials, kind });
 
     for (let stepIndex = 0; stepIndex < scenario.maxSteps; stepIndex++) {
       if (deps.signal?.aborted) {
@@ -219,6 +220,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         lastResult,
         history,
         observation,
+        kind,
       });
       const cacheKey =
         deps.cacheDecisions === false
@@ -247,7 +249,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         result = { ok: true, navigated: false };
       } else {
         result = await adapterSession.act(action);
-        if (action.type === 'click' && result.ok) {
+        if (kind === 'web' && action.type === 'click' && result.ok) {
           const el = observation.interactive.find((e) => e.ref === action.ref);
           await emit([
             inferred(INFERRED_EVENTS.click, {

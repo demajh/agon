@@ -24,6 +24,19 @@ personas/            built-in persona library
 bench/               calibration harness
 ```
 
+## Try it
+
+```
+pnpm install && pnpm build && uv sync --project packages/stats
+VARIANT=control   PORT=3001 pnpm -F @agon/demo-app dev &
+VARIANT=treatment PORT=3002 pnpm -F @agon/demo-app dev &
+export ANTHROPIC_API_KEY=...
+pnpm agon run examples/demo-app/agon.yaml -n 10
+pnpm agon compare ./agon-out
+```
+
+Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md).
+
 ## Development
 
 Requires Node >= 22, pnpm, uv, and Docker.

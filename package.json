@@ -20,7 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rm -rf node_modules",
-    "docs:config": "node scripts/gen-config-docs.mjs"
+    "docs:config": "node scripts/gen-config-docs.mjs",
+    "agon": "node packages/cli/dist/bin.js"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -1,0 +1,12 @@
+# BuildKit reads <Dockerfile>.dockerignore for this Dockerfile only. Keep host installs and build
+# outputs out of the context: the image installs and builds everything itself.
+.git
+.claude
+.agon
+**/node_modules
+**/dist
+**/.turbo
+**/.venv
+**/__pycache__
+**/*.pyc
+**/agon-out

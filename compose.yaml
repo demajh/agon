@@ -1,6 +1,11 @@
 # Agon self-host / development stack.
-#   docker compose up -d
-# Application services (server, worker, ui, demo-app) are added as their Dockerfiles land in deploy/.
+#   docker compose up -d                      everything: Postgres, MinIO, the Agon server, the demo app
+#   docker compose up -d postgres             just the database (local development, tests)
+#
+# The server listens on http://localhost:4000 (docs at /docs). Inside the compose network the demo
+# variants are http://demo-control:3000 and http://demo-treatment:3000; from the host they are
+# http://localhost:3001 and http://localhost:3002. An agon.yaml uploaded to the server should use
+# the in-network URLs, since the worker's browser runs inside the server container.
 services:
   postgres:
     image: postgres:16-alpine
@@ -35,6 +40,53 @@ services:
       timeout: 3s
       retries: 20
 
+  # API + worker in one process (AGON_ROLE=all). Build context is the repo root.
+  server:
+    build:
+      context: .
+      dockerfile: deploy/server.Dockerfile
+    environment:
+      DATABASE_URL: postgres://agon:agon@postgres:5432/agon
+      AGON_API_KEYS: dev-operator-key:operator
+      AGON_DATA_DIR: /data
+      AGON_ROLE: all
+      AGON_LOG_LEVEL: info
+      # AGON_LLM_MODE: live | record | replay | off; set ANTHROPIC_API_KEY / OPENAI_API_KEY for live runs.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - '4000:4000'
+    volumes:
+      - agondata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Ledgerly, the demo target: one container per variant. Analytics go to a dead host and are
+  # intercepted by Agon's browser anyway.
+  demo-control:
+    build:
+      context: .
+      dockerfile: examples/demo-app/Dockerfile
+    environment:
+      VARIANT: control
+      PORT: '3000'
+      POSTHOG_HOST: http://localhost:9999
+    ports:
+      - '3001:3000'
+
+  demo-treatment:
+    build:
+      context: .
+      dockerfile: examples/demo-app/Dockerfile
+    environment:
+      VARIANT: treatment
+      PORT: '3000'
+      POSTHOG_HOST: http://localhost:9999
+    ports:
+      - '3002:3000'
+
 volumes:
   pgdata:
   minio:
+  agondata:

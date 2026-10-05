@@ -1,0 +1,3601 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agon API",
+    "version": "0.0.1",
+    "description": "Control plane for simulated-user experiments and squad governance. Every lift or P(best) is a forecast; show the calibration note next to it."
+  },
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "Meta" },
+    { "name": "Environments" },
+    { "name": "Variants" },
+    { "name": "Runs" },
+    { "name": "Sessions" },
+    { "name": "Personas" },
+    { "name": "Squads" },
+    { "name": "Decisions" },
+    { "name": "API keys" },
+    { "name": "Webhooks" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key from AGON_API_KEYS or POST /v1/api-keys"
+      }
+    },
+    "schemas": {
+      "AgonConfig": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "number", "enum": [1] },
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "description": { "type": "string" },
+          "target": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["web", "http", "cli", "mcp"], "default": "web" },
+              "variants": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Entry URL (web/http/mcp targets)"
+                    },
+                    "image": {
+                      "type": "string",
+                      "description": "Container image to run for this variant (later phase)"
+                    },
+                    "command": { "type": "string", "description": "Command to run (cli targets)" },
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" },
+                      "default": {}
+                    },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" },
+                      "default": {}
+                    },
+                    "description": { "type": "string" },
+                    "squad": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+                      "description": "Squad credited with this variant"
+                    },
+                    "gitRef": { "type": "string" }
+                  }
+                }
+              },
+              "session": {
+                "type": "object",
+                "properties": {
+                  "setup": {
+                    "type": "string",
+                    "description": "Command run before each session; its JSON stdout is passed to the user as credentials/context"
+                  },
+                  "teardown": { "type": "string" },
+                  "timeoutMs": { "type": "integer", "exclusiveMinimum": 0, "default": 60000 }
+                },
+                "default": {}
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "analytics": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["posthog", "segment", "amplitude", "ga"]
+                    },
+                    "default": [],
+                    "description": "Intercept the app's own analytics calls and attribute them to the simulated user"
+                  },
+                  "forwardAnalytics": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Let intercepted analytics calls reach their real destination (default: block them)"
+                  },
+                  "networkErrors": { "type": "boolean", "default": true },
+                  "consoleErrors": { "type": "boolean", "default": true },
+                  "screenshots": {
+                    "type": "string",
+                    "enum": ["never", "on_decision", "every_step"],
+                    "default": "every_step"
+                  }
+                },
+                "default": {}
+              },
+              "viewport": {
+                "type": "object",
+                "properties": {
+                  "width": { "type": "integer", "exclusiveMinimum": 0, "default": 1280 },
+                  "height": { "type": "integer", "exclusiveMinimum": 0, "default": 800 }
+                },
+                "default": {}
+              }
+            },
+            "required": ["variants"]
+          },
+          "personas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                "name": { "type": "string", "minLength": 1 },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "One paragraph, written in the second person, used verbatim in the agent prompt"
+                },
+                "traits": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Job or life role, e.g. \"owner of a 12-person agency\""
+                    },
+                    "techProficiency": {
+                      "type": "string",
+                      "enum": ["novice", "intermediate", "expert"],
+                      "default": "intermediate"
+                    },
+                    "patience": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5,
+                      "description": "Tolerance for fruitless steps before abandoning: 0 leaves at the first friction, 1 is very persistent"
+                    },
+                    "attention": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5,
+                      "description": "Fraction of a page the user actually takes in: 0 skims headlines and buttons, 1 reads everything"
+                    },
+                    "domainFamiliarity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5,
+                      "description": "Prior knowledge of this product category and its jargon"
+                    },
+                    "riskTolerance": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5,
+                      "description": "Willingness to hand over data, pay, or commit"
+                    },
+                    "priceSensitivity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5
+                    }
+                  },
+                  "required": ["role"]
+                },
+                "goals": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "default": []
+                },
+                "frustrations": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "default": []
+                },
+                "device": {
+                  "type": "string",
+                  "enum": ["desktop", "mobile", "tablet"],
+                  "default": "desktop"
+                },
+                "locale": { "type": "string", "minLength": 2, "default": "en-US" },
+                "tags": { "type": "array", "items": { "type": "string" }, "default": [] }
+              },
+              "required": ["id", "name", "summary", "traits"]
+            },
+            "default": [],
+            "description": "Inline persona definitions, referenced from population.personas[].use by id"
+          },
+          "population": {
+            "type": "object",
+            "properties": {
+              "seed": { "type": "integer", "minimum": 0, "default": 0 },
+              "size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "description": "Sessions per run, spread over variants"
+              },
+              "models": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$" },
+                "default": [],
+                "description": "LLM backends to spread the population across; empty means defaults.model"
+              },
+              "personas": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "use": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "\"builtin/<id>\" for the bundled library, a path to a persona YAML file, or the id of an inline persona in this config"
+                    },
+                    "weight": { "type": "number", "exclusiveMinimum": 0, "default": 1 }
+                  },
+                  "required": ["use"]
+                },
+                "minItems": 1
+              },
+              "traitJitter": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.1,
+                "description": "Standard deviation of per-instance noise added to each persona trait"
+              }
+            },
+            "required": ["size", "personas"]
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                "goal": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "What the user is trying to do, in their own words"
+                },
+                "success": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(event|url|text):(.+)$|^judge$",
+                      "description": "Shorthand: \"event:<name>\", \"url:<pattern>\", \"text:<needle>\" or \"judge\""
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string", "enum": ["event"] },
+                        "name": { "type": "string", "minLength": 1 }
+                      },
+                      "required": ["type", "name"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string", "enum": ["url"] },
+                        "pattern": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Substring or glob matched against the current URL"
+                        }
+                      },
+                      "required": ["type", "pattern"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string", "enum": ["text"] },
+                        "contains": { "type": "string", "minLength": 1 }
+                      },
+                      "required": ["type", "contains"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": { "type": { "type": "string", "enum": ["judge"] } },
+                      "required": ["type"]
+                    }
+                  ]
+                },
+                "startPath": { "type": "string", "default": "/" },
+                "maxSteps": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 500,
+                  "default": 30
+                },
+                "budgetUsd": { "type": "number", "exclusiveMinimum": 0, "default": 0.5 },
+                "weight": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
+                "context": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" },
+                  "default": {},
+                  "description": "Extra facts the user knows, e.g. a promo code or a colleague's referral"
+                }
+              },
+              "required": ["id", "goal", "success"]
+            },
+            "minItems": 1
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "primary": { "type": "boolean", "default": false },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["increase", "decrease"],
+                      "description": "Which way is better; defaults per type"
+                    },
+                    "type": { "type": "string", "enum": ["conversion"] },
+                    "event": { "type": "string", "minLength": 1 }
+                  },
+                  "required": ["id", "type", "event"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "primary": { "type": "boolean", "default": false },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["increase", "decrease"],
+                      "description": "Which way is better; defaults per type"
+                    },
+                    "type": { "type": "string", "enum": ["count"] },
+                    "event": { "type": "string", "minLength": 1 }
+                  },
+                  "required": ["id", "type", "event"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "primary": { "type": "boolean", "default": false },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["increase", "decrease"],
+                      "description": "Which way is better; defaults per type"
+                    },
+                    "type": { "type": "string", "enum": ["duration"] },
+                    "from": { "type": "string", "minLength": 1, "default": "session_start" },
+                    "to": { "type": "string", "minLength": 1 }
+                  },
+                  "required": ["id", "type", "to"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "primary": { "type": "boolean", "default": false },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["increase", "decrease"],
+                      "description": "Which way is better; defaults per type"
+                    },
+                    "type": { "type": "string", "enum": ["steps"] }
+                  },
+                  "required": ["id", "type"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "primary": { "type": "boolean", "default": false },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["increase", "decrease"],
+                      "description": "Which way is better; defaults per type"
+                    },
+                    "type": { "type": "string", "enum": ["score"] },
+                    "source": { "type": "string", "enum": ["judge"], "default": "judge" },
+                    "score": {
+                      "type": "string",
+                      "enum": ["satisfaction", "frustration"],
+                      "default": "satisfaction"
+                    }
+                  },
+                  "required": ["id", "type"]
+                }
+              ]
+            },
+            "default": []
+          },
+          "analysis": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": ["bayesian", "sequential", "fixed"],
+                "default": "bayesian"
+              },
+              "control": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+                "description": "Variant treated as baseline; defaults to \"control\" or the first variant"
+              },
+              "minSessionsPerVariant": { "type": "integer", "exclusiveMinimum": 0, "default": 30 },
+              "decision": {
+                "type": "object",
+                "properties": {
+                  "shipIf": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.95,
+                    "description": "P(best) at or above which the variant is a ship candidate"
+                  },
+                  "killIf": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.05,
+                    "description": "P(best) at or below which the variant is a kill candidate"
+                  }
+                },
+                "default": {}
+              },
+              "alpha": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1,
+                "default": 0.05
+              },
+              "clusterBy": {
+                "type": "array",
+                "items": { "type": "string", "enum": ["persona", "model", "scenario"] },
+                "default": ["persona", "model"],
+                "description": "Grouping factors treated as clusters when estimating uncertainty"
+              },
+              "calibrationProfile": {
+                "type": "string",
+                "minLength": 1,
+                "default": "uncalibrated-v0"
+              }
+            },
+            "default": {}
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["jsonl"] },
+                    "path": { "type": "string", "minLength": 1, "default": "./agon-out" }
+                  },
+                  "required": ["type"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["parquet"] },
+                    "path": { "type": "string", "minLength": 1, "default": "./agon-out" }
+                  },
+                  "required": ["type"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["posthog"] },
+                    "projectApiKey": { "type": "string", "minLength": 1 },
+                    "host": {
+                      "type": "string",
+                      "format": "uri",
+                      "default": "https://us.i.posthog.com"
+                    },
+                    "experimentKey": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+                      "description": "Feature-flag key so PostHog Experiments can read the results"
+                    }
+                  },
+                  "required": ["type", "projectApiKey"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["amplitude"] },
+                    "apiKey": { "type": "string", "minLength": 1 },
+                    "serverUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "default": "https://api2.amplitude.com/2/httpapi"
+                    }
+                  },
+                  "required": ["type", "apiKey"]
+                }
+              ]
+            },
+            "default": []
+          },
+          "squad": {
+            "type": "object",
+            "properties": { "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" } },
+            "required": ["id"],
+            "description": "Squad credited with every variant in this config"
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                "name": { "type": "string" },
+                "on": {
+                  "type": "string",
+                  "enum": ["run.completed", "result.ready", "schedule"],
+                  "default": "result.ready"
+                },
+                "when": {
+                  "type": "string",
+                  "description": "Boolean expression over squad and result metrics, e.g. \"squad.p_best_rolling(5) < 0.10\""
+                },
+                "then": {
+                  "type": "string",
+                  "enum": ["reallocate", "pause", "resume", "kill", "notify"]
+                },
+                "method": { "type": "string", "enum": ["thompson"], "default": "thompson" },
+                "floor": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "default": 0.1,
+                  "description": "Minimum allocation any active squad keeps"
+                },
+                "approval": {
+                  "type": "string",
+                  "enum": ["auto", "human"],
+                  "description": "Defaults to human for pause/kill, auto otherwise"
+                },
+                "cooldown": { "type": "string", "pattern": "^\\d+(ms|s|m|h|d)$", "default": "24h" },
+                "maxPerDay": { "type": "integer", "exclusiveMinimum": 0, "default": 5 }
+              },
+              "required": ["id", "then"]
+            },
+            "default": []
+          },
+          "defaults": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$",
+                "default": "anthropic/claude-sonnet-5-5",
+                "description": "Model used when population.models is empty"
+              },
+              "judgeModel": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$",
+                "description": "Model for the independent judge; defaults to model"
+              },
+              "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
+              "maxConcurrency": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 4,
+                "description": "Sessions run in parallel per target"
+              }
+            },
+            "default": {}
+          }
+        },
+        "required": ["version", "name", "target", "population", "scenarios"],
+        "description": "An agon.yaml document: what to simulate."
+      },
+      "AgonEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "event": { "type": "string", "minLength": 1 },
+          "distinctId": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "enum": ["intercepted", "inferred", "judge"] },
+          "provider": { "type": "string", "enum": ["posthog", "segment", "amplitude", "ga"] },
+          "properties": { "type": "object", "additionalProperties": {} }
+        },
+        "required": [
+          "id",
+          "runId",
+          "sessionId",
+          "timestamp",
+          "event",
+          "distinctId",
+          "source",
+          "properties"
+        ]
+      },
+      "ApiKey": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "role": { "type": "string", "enum": ["observer", "operator", "squad"] },
+          "squadId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "label": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "lastUsedAt": { "type": "string", "format": "date-time" },
+          "revokedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "role", "label", "createdAt"]
+      },
+      "ApiKeyList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKey" } }
+        },
+        "required": ["items"]
+      },
+      "CreateApiKeyBody": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "enum": ["observer", "operator", "squad"] },
+          "label": { "type": "string" },
+          "squadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Required for squad keys"
+          }
+        },
+        "required": ["role"]
+      },
+      "CreatedApiKey": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The secret. Shown once; only its hash is stored."
+          },
+          "apiKey": { "$ref": "#/components/schemas/ApiKey" }
+        },
+        "required": ["key", "apiKey"]
+      },
+      "CreateEnvironmentBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+            "description": "Defaults to config.name"
+          },
+          "config": { "$ref": "#/components/schemas/AgonConfig" }
+        },
+        "required": ["config"]
+      },
+      "CreateSquadBody": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "name": { "type": "string", "minLength": 1 },
+          "controlUrl": { "type": "string", "format": "uri" },
+          "ticketSource": { "$ref": "#/components/schemas/TicketSource" }
+        },
+        "required": ["slug", "name"]
+      },
+      "Decision": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "kind": { "type": "string", "enum": ["reallocate", "pause", "resume", "kill", "notify"] },
+          "status": {
+            "type": "string",
+            "enum": ["proposed", "approved", "rejected", "executed", "failed"]
+          },
+          "squadId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "policyId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "actor": { "type": "string", "enum": ["auto", "human"] },
+          "rationale": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "runIds": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "default": []
+              },
+              "resultIds": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "default": []
+              },
+              "metrics": {
+                "type": "object",
+                "additionalProperties": { "type": "number" },
+                "default": {}
+              }
+            },
+            "default": {}
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": {},
+            "default": {},
+            "description": "Action parameters, e.g. the new allocation"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "decidedAt": { "type": "string", "format": "date-time" },
+          "executedAt": { "type": "string", "format": "date-time" },
+          "error": { "type": "string" }
+        },
+        "required": ["id", "kind", "status", "actor", "rationale", "createdAt"]
+      },
+      "DecisionPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Decision" } },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass back as `cursor` to fetch the next page"
+          }
+        },
+        "required": ["items"]
+      },
+      "Environment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "config": { "$ref": "#/components/schemas/AgonConfig" }
+        },
+        "required": ["id", "name", "createdAt", "updatedAt", "config"]
+      },
+      "EnvironmentPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Environment" } },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass back as `cursor` to fetch the next page"
+          }
+        },
+        "required": ["items"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "validation_error",
+                  "config_error",
+                  "not_found",
+                  "conflict",
+                  "unauthorized",
+                  "forbidden",
+                  "budget_exceeded",
+                  "adapter_error",
+                  "llm_error",
+                  "export_error",
+                  "internal_error"
+                ]
+              },
+              "message": { "type": "string" },
+              "details": {}
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "version": { "type": "string" },
+          "role": { "type": "string", "enum": ["all", "api", "worker"] },
+          "db": { "type": "string", "enum": ["ok", "error"] }
+        },
+        "required": ["ok", "version", "role", "db"]
+      },
+      "Leaderboard": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/LeaderboardEntry" }
+          },
+          "computedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["items", "computedAt"]
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "properties": {
+          "rank": { "type": "integer", "exclusiveMinimum": 0 },
+          "squadId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "paused", "killed"] },
+          "allocation": { "type": "number", "minimum": 0, "maximum": 1 },
+          "score": {
+            "type": "object",
+            "properties": {
+              "runs": { "type": "integer", "minimum": 0, "default": 0 },
+              "wins": { "type": "integer", "minimum": 0, "default": 0 },
+              "winRate": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+              "meanLift": { "type": "number", "default": 0 },
+              "costUsd": { "type": "number", "minimum": 0, "default": 0 }
+            }
+          }
+        },
+        "required": ["rank", "squadId", "slug", "name", "status", "allocation", "score"]
+      },
+      "Persona": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "name": { "type": "string", "minLength": 1 },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One paragraph, written in the second person, used verbatim in the agent prompt"
+          },
+          "traits": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Job or life role, e.g. \"owner of a 12-person agency\""
+              },
+              "techProficiency": {
+                "type": "string",
+                "enum": ["novice", "intermediate", "expert"],
+                "default": "intermediate"
+              },
+              "patience": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.5,
+                "description": "Tolerance for fruitless steps before abandoning: 0 leaves at the first friction, 1 is very persistent"
+              },
+              "attention": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.5,
+                "description": "Fraction of a page the user actually takes in: 0 skims headlines and buttons, 1 reads everything"
+              },
+              "domainFamiliarity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.5,
+                "description": "Prior knowledge of this product category and its jargon"
+              },
+              "riskTolerance": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.5,
+                "description": "Willingness to hand over data, pay, or commit"
+              },
+              "priceSensitivity": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+            },
+            "required": ["role"]
+          },
+          "goals": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "default": []
+          },
+          "frustrations": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "default": []
+          },
+          "device": {
+            "type": "string",
+            "enum": ["desktop", "mobile", "tablet"],
+            "default": "desktop"
+          },
+          "locale": { "type": "string", "minLength": 2, "default": "en-US" },
+          "tags": { "type": "array", "items": { "type": "string" }, "default": [] }
+        },
+        "required": ["id", "name", "summary", "traits"]
+      },
+      "PersonaList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Persona" } }
+        },
+        "required": ["items"]
+      },
+      "ReallocateBody": {
+        "type": "object",
+        "properties": {
+          "floor": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Minimum share every active squad keeps (default 0.1)"
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "seed": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ReallocateResponse": {
+        "type": "object",
+        "properties": {
+          "decision": { "$ref": "#/components/schemas/Decision" },
+          "allocation": {
+            "type": "object",
+            "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "squads": { "type": "array", "items": { "$ref": "#/components/schemas/Squad" } }
+        },
+        "required": ["decision", "allocation", "squads"]
+      },
+      "RegisterVariantBody": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "spec": { "$ref": "#/components/schemas/VariantSpec" },
+          "squad": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+            "description": "Squad credited with this variant"
+          },
+          "gitRef": { "type": "string" }
+        },
+        "required": ["name", "spec"]
+      },
+      "Result": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "method": { "type": "string", "enum": ["bayesian", "sequential", "fixed"] },
+          "control": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "primaryMetricId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metricId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                "direction": { "type": "string", "enum": ["increase", "decrease"] },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                      "sessions": { "type": "integer", "minimum": 0 },
+                      "successes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Binary metrics only"
+                      },
+                      "mean": { "type": "number" },
+                      "stderr": { "type": "number", "minimum": 0 },
+                      "ci95": {
+                        "type": "array",
+                        "prefixItems": [{ "type": "number" }, { "type": "number" }]
+                      },
+                      "effectiveSampleSize": { "type": "number", "minimum": 0 }
+                    },
+                    "required": ["variant", "sessions", "mean", "stderr", "ci95"]
+                  }
+                },
+                "comparisons": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                      "control": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                      "lift": {
+                        "type": "number",
+                        "description": "Relative lift of variant over control"
+                      },
+                      "liftCi95": {
+                        "type": "array",
+                        "prefixItems": [{ "type": "number" }, { "type": "number" }]
+                      },
+                      "pBest": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Posterior probability this variant is the best of all variants"
+                      },
+                      "pBeatControl": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "expectedLoss": { "type": "number", "minimum": 0 },
+                      "pValue": { "type": "number", "minimum": 0, "maximum": 1 }
+                    },
+                    "required": [
+                      "variant",
+                      "control",
+                      "lift",
+                      "liftCi95",
+                      "pBest",
+                      "pBeatControl",
+                      "expectedLoss"
+                    ]
+                  }
+                },
+                "varianceDecomposition": {
+                  "type": "object",
+                  "properties": {
+                    "persona": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "model": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "scenario": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "residual": { "type": "number", "minimum": 0, "maximum": 1 }
+                  },
+                  "required": ["persona", "model", "residual"]
+                },
+                "warnings": { "type": "array", "items": { "type": "string" }, "default": [] }
+              },
+              "required": ["metricId", "direction", "variants", "comparisons"]
+            }
+          },
+          "decision": {
+            "type": "object",
+            "properties": {
+              "verdict": { "type": "string", "enum": ["ship", "kill", "continue", "inconclusive"] },
+              "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+              "rationale": { "type": "string" }
+            },
+            "required": ["verdict", "rationale"]
+          },
+          "calibration": {
+            "type": "object",
+            "properties": {
+              "profile": { "type": "string", "minLength": 1 },
+              "changeCategory": { "type": "string" },
+              "directionAccuracy": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Benchmark agreement rate for this change category"
+              },
+              "note": { "type": "string", "minLength": 1 }
+            },
+            "required": ["profile", "note"]
+          },
+          "sessionsAnalyzed": { "type": "integer", "minimum": 0 },
+          "computedAt": { "type": "string", "format": "date-time" },
+          "engine": {
+            "type": "object",
+            "properties": { "name": { "type": "string" }, "version": { "type": "string" } },
+            "required": ["name", "version"]
+          }
+        },
+        "required": [
+          "id",
+          "runId",
+          "method",
+          "control",
+          "primaryMetricId",
+          "metrics",
+          "decision",
+          "calibration",
+          "sessionsAnalyzed",
+          "computedAt",
+          "engine"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "environmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "failed", "cancelled"]
+          },
+          "variants": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+            "minItems": 1
+          },
+          "seed": { "type": "integer", "minimum": 0 },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "planned": { "type": "integer", "minimum": 0, "default": 0 },
+              "running": { "type": "integer", "minimum": 0, "default": 0 },
+              "completed": { "type": "integer", "minimum": 0, "default": 0 },
+              "failed": { "type": "integer", "minimum": 0, "default": 0 }
+            },
+            "default": {}
+          },
+          "costUsd": { "type": "number", "minimum": 0, "default": 0 },
+          "resultId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "finishedAt": { "type": "string", "format": "date-time" },
+          "error": { "type": "string" },
+          "config": { "$ref": "#/components/schemas/AgonConfig" }
+        },
+        "required": ["id", "environmentId", "status", "variants", "seed", "createdAt", "config"],
+        "description": "`config` is the snapshot of the environment config at run time."
+      },
+      "RunPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Run" } },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass back as `cursor` to fetch the next page"
+          }
+        },
+        "required": ["items"]
+      },
+      "RunRequest": {
+        "type": "object",
+        "properties": {
+          "variants": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+            "minItems": 1,
+            "description": "Subset of variants to run; default all"
+          },
+          "seed": { "type": "integer", "minimum": 0 },
+          "size": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Override population.size"
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$",
+            "description": "Override defaults.model"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "default": false,
+            "description": "Plan sessions without executing them"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "index": { "type": "integer", "minimum": 0 },
+          "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "scenarioId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "persona": {
+            "type": "object",
+            "properties": {
+              "personaId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+              "name": { "type": "string" },
+              "summary": { "type": "string" },
+              "traits": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Job or life role, e.g. \"owner of a 12-person agency\""
+                  },
+                  "techProficiency": {
+                    "type": "string",
+                    "enum": ["novice", "intermediate", "expert"],
+                    "default": "intermediate"
+                  },
+                  "patience": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5,
+                    "description": "Tolerance for fruitless steps before abandoning: 0 leaves at the first friction, 1 is very persistent"
+                  },
+                  "attention": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5,
+                    "description": "Fraction of a page the user actually takes in: 0 skims headlines and buttons, 1 reads everything"
+                  },
+                  "domainFamiliarity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5,
+                    "description": "Prior knowledge of this product category and its jargon"
+                  },
+                  "riskTolerance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5,
+                    "description": "Willingness to hand over data, pay, or commit"
+                  },
+                  "priceSensitivity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5
+                  }
+                },
+                "required": ["role"]
+              },
+              "goals": { "type": "array", "items": { "type": "string" } },
+              "frustrations": { "type": "array", "items": { "type": "string" } },
+              "device": { "type": "string", "enum": ["desktop", "mobile", "tablet"] },
+              "locale": { "type": "string" },
+              "model": { "type": "string", "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$" },
+              "seed": { "type": "integer", "minimum": 0 },
+              "distinctId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable analytics identity for this simulated user"
+              }
+            },
+            "required": [
+              "personaId",
+              "name",
+              "summary",
+              "traits",
+              "goals",
+              "frustrations",
+              "device",
+              "locale",
+              "model",
+              "seed",
+              "distinctId"
+            ]
+          },
+          "status": { "type": "string", "enum": ["pending", "running", "finished", "failed"] },
+          "outcome": {
+            "type": "string",
+            "enum": ["success", "gave_up", "max_steps", "budget_exceeded", "error"]
+          },
+          "outcomeReason": { "type": "string" },
+          "steps": { "type": "integer", "minimum": 0, "default": 0 },
+          "costUsd": { "type": "number", "minimum": 0, "default": 0 },
+          "inputTokens": { "type": "integer", "minimum": 0, "default": 0 },
+          "outputTokens": { "type": "integer", "minimum": 0, "default": 0 },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": { "type": "number" },
+            "default": {},
+            "description": "Metric values computed for this session"
+          },
+          "judgement": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "boolean" },
+              "satisfaction": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "frustration": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+              "summary": { "type": "string" },
+              "usage": {
+                "type": "object",
+                "properties": {
+                  "model": { "type": "string", "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$" },
+                  "inputTokens": { "type": "integer", "minimum": 0 },
+                  "outputTokens": { "type": "integer", "minimum": 0 },
+                  "costUsd": { "type": "number", "minimum": 0 },
+                  "latencyMs": { "type": "integer", "minimum": 0 },
+                  "cached": { "type": "boolean", "default": false }
+                },
+                "required": ["model", "inputTokens", "outputTokens", "costUsd", "latencyMs"]
+              }
+            },
+            "required": ["success", "satisfaction", "frustration", "confidence", "summary"]
+          },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "finishedAt": { "type": "string", "format": "date-time" },
+          "error": { "type": "string" }
+        },
+        "required": ["id", "runId", "index", "variant", "scenarioId", "persona", "status"]
+      },
+      "SessionPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Session" } },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass back as `cursor` to fetch the next page"
+          }
+        },
+        "required": ["items"]
+      },
+      "Squad": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "name": { "type": "string", "minLength": 1 },
+          "status": {
+            "type": "string",
+            "enum": ["active", "paused", "killed"],
+            "default": "active"
+          },
+          "controlUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Webhook that receives Squad Control Protocol messages"
+          },
+          "ticketSource": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "enum": ["linear"] },
+                  "teamId": { "type": "string", "minLength": 1 },
+                  "label": { "type": "string", "default": "agon:paused" }
+                },
+                "required": ["kind", "teamId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "enum": ["jira"] },
+                  "projectKey": { "type": "string", "minLength": 1 },
+                  "label": { "type": "string", "default": "agon-paused" }
+                },
+                "required": ["kind", "projectKey"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "enum": ["github"] },
+                  "repo": { "type": "string", "minLength": 1 },
+                  "label": { "type": "string", "default": "agon:paused" }
+                },
+                "required": ["kind", "repo"]
+              }
+            ]
+          },
+          "allocation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0,
+            "description": "Share of work or compute currently routed to this squad"
+          },
+          "score": {
+            "type": "object",
+            "properties": {
+              "runs": { "type": "integer", "minimum": 0, "default": 0 },
+              "wins": { "type": "integer", "minimum": 0, "default": 0 },
+              "winRate": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+              "meanLift": { "type": "number", "default": 0 },
+              "costUsd": { "type": "number", "minimum": 0, "default": 0 }
+            },
+            "default": {}
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "slug", "name", "createdAt", "updatedAt"]
+      },
+      "SquadActionBody": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string", "minLength": 1 },
+          "approval": {
+            "type": "string",
+            "enum": ["auto", "human"],
+            "description": "\"auto\" (default) records an approved decision and executes it now; \"human\" only proposes it, to be approved through POST /v1/decisions/{id}/approve"
+          }
+        },
+        "required": ["reason"]
+      },
+      "SquadActionResponse": {
+        "type": "object",
+        "properties": {
+          "squad": { "$ref": "#/components/schemas/Squad" },
+          "decision": { "$ref": "#/components/schemas/Decision" }
+        },
+        "required": ["squad", "decision"]
+      },
+      "SquadControlMessage": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "enum": ["pause", "resume", "kill", "reallocate"] },
+          "squadId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "squad": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "allocation": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reason": { "type": "string" },
+          "decisionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "evidenceUrl": { "type": "string", "format": "uri" },
+          "sentAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["action", "squadId", "squad", "reason", "decisionId", "sentAt"],
+        "description": "Squad Control Protocol: the body Agon POSTs to a squad controlUrl."
+      },
+      "SquadList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Squad" } }
+        },
+        "required": ["items"]
+      },
+      "Step": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "index": { "type": "integer", "minimum": 0 },
+          "observation": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" },
+              "title": { "type": "string", "default": "" },
+              "text": {
+                "type": "string",
+                "description": "Readable page content, already truncated to the persona's attention"
+              },
+              "interactive": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Stable handle the agent uses to act on this element"
+                    },
+                    "role": { "type": "string", "minLength": 1 },
+                    "name": { "type": "string", "default": "" },
+                    "value": { "type": "string" },
+                    "href": { "type": "string" },
+                    "disabled": { "type": "boolean", "default": false },
+                    "checked": { "type": "boolean" }
+                  },
+                  "required": ["ref", "role"]
+                }
+              },
+              "errors": { "type": "array", "items": { "type": "string" }, "default": [] },
+              "truncated": { "type": "boolean", "default": false },
+              "hash": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Content hash used to detect repeated states and to cache decisions"
+              },
+              "screenshotRef": { "type": "string" },
+              "capturedAt": { "type": "string", "format": "date-time" }
+            },
+            "required": ["url", "text", "interactive", "hash", "capturedAt"]
+          },
+          "decision": {
+            "type": "object",
+            "properties": {
+              "perception": {
+                "type": "string",
+                "description": "What this user notices on the page, in their voice"
+              },
+              "thinking": { "type": "string", "description": "Why they do what they do next" },
+              "feeling": {
+                "type": "string",
+                "enum": ["confident", "neutral", "confused", "frustrated"]
+              },
+              "progress": {
+                "type": "string",
+                "enum": ["progress", "none", "regress"],
+                "description": "Did the last action move them toward the goal?"
+              },
+              "action": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["click"] },
+                      "ref": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["type", "ref"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["fill"] },
+                      "ref": { "type": "string", "minLength": 1 },
+                      "text": { "type": "string" }
+                    },
+                    "required": ["type", "ref", "text"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["select"] },
+                      "ref": { "type": "string", "minLength": 1 },
+                      "value": { "type": "string" }
+                    },
+                    "required": ["type", "ref", "value"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["press"] },
+                      "key": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["type", "key"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["navigate"] },
+                      "url": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["type", "url"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["scroll"] },
+                      "direction": { "type": "string", "enum": ["down", "up"] }
+                    },
+                    "required": ["type", "direction"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": { "type": { "type": "string", "enum": ["back"] } },
+                    "required": ["type"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["wait"] },
+                      "ms": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000 }
+                    },
+                    "required": ["type", "ms"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["give_up"] },
+                      "reason": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["type", "reason"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["done"] },
+                      "reason": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["type", "reason"]
+                  }
+                ]
+              }
+            },
+            "required": ["perception", "thinking", "feeling", "progress", "action"]
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "ok": { "type": "boolean" },
+              "error": { "type": "string" },
+              "navigated": { "type": "boolean", "default": false }
+            },
+            "required": ["ok"]
+          },
+          "patience": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Remaining patience after this step"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "model": { "type": "string", "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$" },
+              "inputTokens": { "type": "integer", "minimum": 0 },
+              "outputTokens": { "type": "integer", "minimum": 0 },
+              "costUsd": { "type": "number", "minimum": 0 },
+              "latencyMs": { "type": "integer", "minimum": 0 },
+              "cached": { "type": "boolean", "default": false }
+            },
+            "required": ["model", "inputTokens", "outputTokens", "costUsd", "latencyMs"]
+          },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "integer", "minimum": 0 }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "index",
+          "observation",
+          "decision",
+          "result",
+          "patience",
+          "usage",
+          "startedAt",
+          "durationMs"
+        ]
+      },
+      "TicketSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["linear"] },
+              "teamId": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "default": "agon:paused" }
+            },
+            "required": ["kind", "teamId"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["jira"] },
+              "projectKey": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "default": "agon-paused" }
+            },
+            "required": ["kind", "projectKey"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["github"] },
+              "repo": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "default": "agon:paused" }
+            },
+            "required": ["kind", "repo"]
+          }
+        ]
+      },
+      "Trace": {
+        "type": "object",
+        "properties": {
+          "session": { "$ref": "#/components/schemas/Session" },
+          "steps": { "type": "array", "items": { "$ref": "#/components/schemas/Step" } },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/AgonEvent" } }
+        },
+        "required": ["session", "steps", "events"]
+      },
+      "UpdateSquadBody": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "controlUrl": {
+            "type": ["string", "null"],
+            "format": "uri",
+            "description": "null clears the control webhook"
+          },
+          "ticketSource": { "$ref": "#/components/schemas/TicketSource" }
+        }
+      },
+      "ValidateConfigBody": {
+        "type": "object",
+        "properties": { "config": { "description": "A candidate agon.yaml document as JSON" } }
+      },
+      "ValidateConfigResponse": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "message": { "type": "string" },
+                "code": { "type": "string" }
+              },
+              "required": ["path", "message"]
+            }
+          }
+        },
+        "required": ["ok", "issues"]
+      },
+      "Variant": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "environmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+          "squadId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "gitRef": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "spec": { "$ref": "#/components/schemas/VariantSpec" }
+        },
+        "required": ["id", "environmentId", "name", "createdAt", "updatedAt", "spec"]
+      },
+      "VariantList": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Variant" } }
+        },
+        "required": ["items"]
+      },
+      "VariantSpec": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Entry URL (web/http/mcp targets)"
+          },
+          "image": {
+            "type": "string",
+            "description": "Container image to run for this variant (later phase)"
+          },
+          "command": { "type": "string", "description": "Command to run (cli targets)" },
+          "env": { "type": "object", "additionalProperties": { "type": "string" }, "default": {} },
+          "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "default": {}
+          },
+          "description": { "type": "string" },
+          "squad": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+            "description": "Squad credited with this variant"
+          },
+          "gitRef": { "type": "string" }
+        }
+      },
+      "WebhookEnvelope": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": ["run.completed", "result.ready", "decision.proposed", "decision.made"]
+          },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "data": { "type": "object", "additionalProperties": {} }
+        },
+        "required": ["event", "timestamp", "data"],
+        "description": "Body of every outbound webhook Agon sends."
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/docs": {
+      "get": {
+        "tags": ["Meta"],
+        "operationId": "getDocs",
+        "summary": "Interactive API reference (no auth)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "An HTML page rendering /openapi.json",
+            "content": { "text/html": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": ["Meta"],
+        "operationId": "health",
+        "summary": "Liveness and database check (no auth)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+            }
+          },
+          "503": {
+            "description": "The database is unreachable",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["Meta"],
+        "operationId": "getOpenApiDocument",
+        "summary": "This API as an OpenAPI 3.1 document (no auth)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document",
+            "content": {
+              "application/json": { "schema": { "type": "object", "additionalProperties": {} } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/api-keys": {
+      "post": {
+        "tags": ["API keys"],
+        "operationId": "createApiKey",
+        "summary": "Create an API key (operators only)",
+        "description": "The plaintext key is returned once and never stored; only its hash is.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "description": "Role and scope",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateApiKeyBody" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The key and its record",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CreatedApiKey" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["API keys"],
+        "operationId": "listApiKeys",
+        "summary": "List active API keys (operators only)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Keys, oldest first; hashes are never returned",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyList" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/api-keys/{id}": {
+      "delete": {
+        "tags": ["API keys"],
+        "operationId": "revokeApiKey",
+        "summary": "Revoke an API key (operators only)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revoked key record",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ApiKey" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decisions": {
+      "get": {
+        "tags": ["Decisions"],
+        "operationId": "listDecisions",
+        "summary": "List decisions",
+        "description": "The append-only governance log, newest first.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          { "schema": { "type": "string" }, "required": false, "name": "cursor", "in": "query" },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": false,
+            "name": "squadId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["proposed", "approved", "rejected", "executed", "failed"]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["reallocate", "pause", "resume", "kill", "notify"]
+            },
+            "required": false,
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+            "required": false,
+            "name": "policyId",
+            "in": "query"
+          },
+          {
+            "schema": { "type": "string", "enum": ["auto", "human"] },
+            "required": false,
+            "name": "actor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Decisions",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DecisionPage" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decisions/{id}": {
+      "get": {
+        "tags": ["Decisions"],
+        "operationId": "getDecision",
+        "summary": "Get a decision",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decision",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Decision" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decisions/{id}/approve": {
+      "post": {
+        "tags": ["Decisions"],
+        "operationId": "approveDecision",
+        "summary": "Approve a proposed decision and execute it",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decision after execution (`executed` or `failed`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Decision" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decisions/{id}/reject": {
+      "post": {
+        "tags": ["Decisions"],
+        "operationId": "rejectDecision",
+        "summary": "Reject a proposed decision",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rejected decision",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Decision" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments": {
+      "post": {
+        "tags": ["Environments"],
+        "operationId": "createEnvironment",
+        "summary": "Create an environment",
+        "description": "Stores an agon.yaml as JSON (`{ name?, config }`) or as YAML text (`Content-Type: application/yaml`). Environment-variable placeholders (`${...}`) are not expanded server-side and are rejected.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "description": "The config to store",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEnvironmentBody" }
+            },
+            "application/yaml": {
+              "schema": { "type": "string", "description": "An agon.yaml document" }
+            },
+            "text/yaml": { "schema": { "type": "string", "description": "An agon.yaml document" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored environment",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Environment" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Environments"],
+        "operationId": "listEnvironments",
+        "summary": "List environments",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          { "schema": { "type": "string" }, "required": false, "name": "cursor", "in": "query" },
+          {
+            "schema": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+            "required": false,
+            "name": "name",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Environments, newest first",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/EnvironmentPage" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}": {
+      "get": {
+        "tags": ["Environments"],
+        "operationId": "getEnvironment",
+        "summary": "Get an environment",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The environment",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Environment" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Environments"],
+        "operationId": "replaceEnvironment",
+        "summary": "Replace an environment config",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "The new config",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEnvironmentBody" }
+            },
+            "application/yaml": {
+              "schema": { "type": "string", "description": "An agon.yaml document" }
+            },
+            "text/yaml": { "schema": { "type": "string", "description": "An agon.yaml document" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated environment",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Environment" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Environments"],
+        "operationId": "deleteEnvironment",
+        "summary": "Delete an environment and everything recorded under it",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}/runs": {
+      "post": {
+        "tags": ["Runs"],
+        "operationId": "startRun",
+        "summary": "Queue a run of an environment",
+        "description": "Creates the run (status `queued`) with a snapshot of the environment config and hands it to a worker. `variants` defaults to every variant; `size`, `seed` and `model` override the config.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Run overrides (all optional)",
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RunRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The queued run",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Run" } } }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Runs"],
+        "operationId": "listRuns",
+        "summary": "List the runs of an environment",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          { "schema": { "type": "string" }, "required": false, "name": "cursor", "in": "query" },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["queued", "running", "completed", "failed", "cancelled"]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/RunPage" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}/validate": {
+      "post": {
+        "tags": ["Environments"],
+        "operationId": "validateConfig",
+        "summary": "Validate a candidate config",
+        "description": "Checks a config (JSON `{ config }` or YAML text) against the agon.yaml schema and the policy expression grammar without storing it. The environment must exist.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "The candidate config",
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ValidateConfigBody" } },
+            "application/yaml": {
+              "schema": { "type": "string", "description": "An agon.yaml document" }
+            },
+            "text/yaml": { "schema": { "type": "string", "description": "An agon.yaml document" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Whether the config is valid, with issues",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ValidateConfigResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}/variants": {
+      "post": {
+        "tags": ["Variants"],
+        "operationId": "registerVariant",
+        "summary": "Register (or replace) a variant",
+        "description": "Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "The variant",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RegisterVariantBody" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The registered variant",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Variant" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Variants"],
+        "operationId": "listVariants",
+        "summary": "List the registered variants of an environment",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Variants by name",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/VariantList" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/personas": {
+      "get": {
+        "tags": ["Personas"],
+        "operationId": "listPersonas",
+        "summary": "List the built-in persona library",
+        "description": "Reference them from a config as `builtin/<id>`.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Built-in personas, by id",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PersonaList" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "500": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}": {
+      "get": {
+        "tags": ["Runs"],
+        "operationId": "getRun",
+        "summary": "Get a run",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Run" } } }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/cancel": {
+      "post": {
+        "tags": ["Runs"],
+        "operationId": "cancelRun",
+        "summary": "Cancel a run",
+        "description": "A queued run is cancelled immediately. A running run is marked cancelled; the worker notices within a few seconds, finishes the sessions in flight and starts no new ones.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, now cancelled",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Run" } } }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/results": {
+      "get": {
+        "tags": ["Runs"],
+        "operationId": "getRunResult",
+        "summary": "Get the analysis of a run",
+        "description": "Returns 404 until the run has finished and its sessions were analyzed. Results are forecasts: show `calibration.note` next to every lift.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Result" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/screenshots/{stepId}": {
+      "get": {
+        "tags": ["Sessions"],
+        "operationId": "getScreenshot",
+        "summary": "Get the screenshot taken at a step",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG image",
+            "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/sessions": {
+      "get": {
+        "tags": ["Sessions"],
+        "operationId": "listSessions",
+        "summary": "List the sessions of a run",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          { "schema": { "type": "string" }, "required": false, "name": "cursor", "in": "query" },
+          {
+            "schema": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+            "required": false,
+            "name": "variant",
+            "in": "query"
+          },
+          {
+            "schema": { "type": "string", "enum": ["pending", "running", "finished", "failed"] },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions in index order",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SessionPage" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}": {
+      "get": {
+        "tags": ["Sessions"],
+        "operationId": "getSession",
+        "summary": "Get a session",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Session" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{id}/trace": {
+      "get": {
+        "tags": ["Sessions"],
+        "operationId": "getSessionTrace",
+        "summary": "Get a session with its steps and events",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session, steps in order, events in time order",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Trace" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads": {
+      "post": {
+        "tags": ["Squads"],
+        "operationId": "createSquad",
+        "summary": "Register a squad",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "description": "The squad",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateSquadBody" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The squad",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Squad" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Squads"],
+        "operationId": "listSquads",
+        "summary": "List squads",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "enum": ["active", "paused", "killed"] },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Squads, oldest first",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SquadList" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/{id}": {
+      "get": {
+        "tags": ["Squads"],
+        "operationId": "getSquad",
+        "summary": "Get a squad",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The squad",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Squad" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Squads"],
+        "operationId": "updateSquad",
+        "summary": "Update a squad's name, control webhook or ticket source",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Fields to change",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateSquadBody" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated squad",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Squad" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/{id}/kill": {
+      "post": {
+        "tags": ["Squads"],
+        "operationId": "killSquad",
+        "summary": "Kill a squad",
+        "description": "Writes a Decision (kind `kill`, actor human) first, then sets the squad status and POSTs a SquadControlMessage to the squad's controlUrl. Webhook failures are recorded on the decision (status `failed`), never returned as errors.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Why",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SquadActionBody" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The squad and the decision that changed it",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SquadActionResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/{id}/pause": {
+      "post": {
+        "tags": ["Squads"],
+        "operationId": "pauseSquad",
+        "summary": "Pause a squad",
+        "description": "Writes a Decision (kind `pause`, actor human) first, then sets the squad status and POSTs a SquadControlMessage to the squad's controlUrl. Webhook failures are recorded on the decision (status `failed`), never returned as errors.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Why",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SquadActionBody" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The squad and the decision that changed it",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SquadActionResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/{id}/resume": {
+      "post": {
+        "tags": ["Squads"],
+        "operationId": "resumeSquad",
+        "summary": "Resume a paused squad",
+        "description": "Writes a Decision (kind `resume`, actor human) first, then sets the squad status and POSTs a SquadControlMessage to the squad's controlUrl. Webhook failures are recorded on the decision (status `failed`), never returned as errors.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Why",
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SquadActionBody" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The squad and the decision that changed it",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SquadActionResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "404": {
+            "description": "No such resource (`not_found`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/leaderboard": {
+      "get": {
+        "tags": ["Squads"],
+        "operationId": "getLeaderboard",
+        "summary": "Squad leaderboard",
+        "description": "Squads ranked by win rate, then mean calibrated lift, with their current allocation.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Ranked squads",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Leaderboard" } }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/v1/squads/reallocate": {
+      "post": {
+        "tags": ["Squads"],
+        "operationId": "reallocateSquads",
+        "summary": "Reallocate work across active squads",
+        "description": "Thompson-sampling allocation from each active squad's wins and runs, with a floor every squad keeps. Records one `reallocate` Decision, updates every allocation, and notifies control webhooks.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "description": "Allocation parameters",
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReallocateBody" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision and the new allocation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReallocateResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or config (`validation_error`, `config_error`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key (`unauthorized`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": {
+            "description": "The key role may not perform this operation (`forbidden`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "The operation conflicts with the current state (`conflict`)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "agonEvent": {
+      "post": {
+        "summary": "Outbound event webhook",
+        "description": "POSTed to AGON_WEBHOOK_URL for run.completed, result.ready, decision.proposed and decision.made.",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "description": "The event envelope",
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEnvelope" } }
+          }
+        },
+        "responses": { "200": { "description": "Any 2xx acknowledges the event" } }
+      }
+    },
+    "squadControl": {
+      "post": {
+        "summary": "Squad Control Protocol",
+        "description": "POSTed to a squad's controlUrl when a pause, resume, kill or reallocate decision executes.",
+        "tags": ["Webhooks"],
+        "requestBody": {
+          "description": "The control message",
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SquadControlMessage" } }
+          }
+        },
+        "responses": { "200": { "description": "Any 2xx acknowledges the message" } }
+      }
+    }
+  }
+}

@@ -35,6 +35,17 @@ const ALLOW = {
   ],
   '@agon/ui': ['@agon/sdk'],
   '@agon/demo-app': [],
+  // Integration tests that exercise the real browser adapter against the demo app.
+  '@agon/e2e': [
+    '@agon/spec',
+    '@agon/engine',
+    '@agon/adapters',
+    '@agon/llm',
+    '@agon/exporters',
+    '@agon/stats-client',
+    '@agon/cli',
+    '@agon/demo-app',
+  ],
 };
 
 const roots = ['packages', 'examples'];

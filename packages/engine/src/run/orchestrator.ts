@@ -136,6 +136,7 @@ export async function runExperiment(
               cwd,
               patience: deps.patience,
               cacheDecisions: deps.cacheDecisions,
+              signal: deps.signal,
             },
           ),
           timeoutMs,
@@ -155,6 +156,7 @@ export async function runExperiment(
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, plans.length) }, () => worker()));
 
+  if (deps.signal?.aborted) cancelled = true;
   run.status = cancelled
     ? 'cancelled'
     : run.counts.completed === 0 && plans.length > 0

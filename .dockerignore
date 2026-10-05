@@ -1,0 +1,18 @@
+# Keep image build contexts small; Dockerfiles build from source.
+.git
+node_modules
+**/node_modules
+**/dist
+.turbo
+**/.turbo
+.agon
+agon-out
+**/agon-out
+.claude
+.venv
+**/.venv
+**/__pycache__
+coverage
+*.log
+.env
+.env.*

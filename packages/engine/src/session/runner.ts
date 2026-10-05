@@ -47,6 +47,8 @@ export interface SessionDeps {
   patience?: PatienceParams | undefined;
   /** Reuse decisions for identical (persona, scenario, page, history) states via the LLM cache. Default true. */
   cacheDecisions?: boolean | undefined;
+  /** Fires to stop the session between steps; the session finishes as failed with reason "cancelled". */
+  signal?: AbortSignal | undefined;
 }
 
 export interface SessionInput {
@@ -185,6 +187,13 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
     const system = buildSystemPrompt({ persona, scenario, credentials });
 
     for (let stepIndex = 0; stepIndex < scenario.maxSteps; stepIndex++) {
+      if (deps.signal?.aborted) {
+        session.status = 'failed';
+        session.error = 'cancelled';
+        outcome = 'error';
+        outcomeReason = 'cancelled';
+        break;
+      }
       const stepStartedAt = Date.now();
       const observation = pruneObservation(
         await adapterSession.observe({

@@ -67,6 +67,33 @@ describe('runExperiment', () => {
     expect(broken.run.error).toMatch(/every session failed/);
   });
 
+  it('stops promptly when the signal fires and marks the run cancelled', async () => {
+    const config = testConfig({ population: { seed: 3, size: 6, personas: [{ use: 'eager' }] } });
+    const controller = new AbortController();
+    let calls = 0;
+    const slowUser: typeof happyUser = (p, r) => {
+      if (++calls === 3) controller.abort();
+      return happyUser(p, r);
+    };
+    const outcome = await runExperiment(
+      config,
+      { runId: 'run_cancel', concurrency: 1 },
+      {
+        llm: new FakeLlm(slowUser),
+        adapters: { web: new FakeAdapter() },
+        recorder: new MemoryRecorder(),
+        logger,
+        signal: controller.signal,
+      },
+    );
+    expect(outcome.run.status).toBe('cancelled');
+    expect(outcome.sessions.length).toBeLessThan(6);
+    const cancelled = outcome.sessions.find((s) => s.outcomeReason === 'cancelled');
+    expect(cancelled?.status).toBe('failed');
+    expect(cancelled?.outcome).toBe('error');
+    expect(calls).toBeLessThan(10);
+  });
+
   it('rejects unknown variants and missing adapters up front', async () => {
     const config = testConfig();
     const deps = {

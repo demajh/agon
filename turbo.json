@@ -32,6 +32,18 @@
     },
     "clean": {
       "cache": false
+    },
+    "@agon/e2e#test": {
+      "dependsOn": [
+        "^build",
+        "@agon/adapters#test",
+        "@agon/db#test"
+      ],
+      "env": [
+        "DATABASE_URL",
+        "AGON_LLM_MODE",
+        "AGON_SKIP_STATS_TESTS"
+      ]
     }
   }
 }

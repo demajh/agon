@@ -12,11 +12,12 @@ Agon spins up simulation environments in which LLM-driven users with realistic p
 packages/spec        domain model and agon.yaml schema (Zod, source of truth)
 packages/db          Postgres schema and migrations (Drizzle)
 packages/llm         provider-agnostic LLM client with record/replay
-packages/adapters    target adapters (web via Playwright; http, cli, mcp later)
+packages/adapters    target adapters: web (Playwright), mcp (Model Context Protocol client)
 packages/engine      orchestrator, session loop, personas, simulated-user agent, judge
 packages/exporters   JSONL/Parquet, PostHog, Amplitude, warehouse sinks
-packages/server      API (OpenAPI), workers, policy engine
-packages/sdk         generated TypeScript client
+packages/server      API (OpenAPI), pg-boss workers, squad governance, policy engine
+packages/sdk         typed TypeScript client generated from the OpenAPI document
+packages/e2e         real-browser integration tests against the demo app
 packages/cli         the `agon` command
 packages/stats       agon-stats (Python): analysis, bandits, calibration
 examples/demo-app    two-variant demo target used by tests and the quickstart
@@ -36,6 +37,8 @@ pnpm agon compare ./agon-out
 ```
 
 Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md).
+
+Agon also simulates populations of **AI agents** against MCP servers and APIs: personas with a `harness` block drive `mcp` targets through tool calls, and `check:` success criteria verify the resulting state. See [docs/agent-usability.md](docs/agent-usability.md).
 
 ## Development
 

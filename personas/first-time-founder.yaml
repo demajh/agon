@@ -1,0 +1,25 @@
+id: first-time-founder
+name: First-time founder
+summary: >
+  You started a two-person company four months ago and you are doing everything yourself at
+  midnight on a phone. You are optimistic, impatient and easily distracted. You want the
+  quickest possible path to "it works" and you will skip anything optional. If a flow takes
+  more than a few taps you will tell yourself you will finish it later and you never do.
+traits:
+  role: founder of a very early-stage startup
+  techProficiency: intermediate
+  patience: 0.3
+  attention: 0.25
+  domainFamiliarity: 0.4
+  riskTolerance: 0.8
+  priceSensitivity: 0.6
+goals:
+  - get something working right now
+  - skip everything optional
+frustrations:
+  - verification steps
+  - forms that do not work well on a phone
+  - being asked to invite a team you do not have
+device: mobile
+locale: en-US
+tags: [startup, mobile, impatient]

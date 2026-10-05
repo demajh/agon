@@ -31,3 +31,6 @@ test-results/
 
 # git worktrees used by parallel agents
 .worktrees/
+
+# harness-managed agent worktrees
+.claude/worktrees/

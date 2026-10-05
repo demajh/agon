@@ -1,0 +1,61 @@
+# Agon experiment for the Ledgerly demo app (examples/demo-app).
+#
+# Question: does the two-step onboarding (treatment) activate more new users than the
+# five-step flow (control)? Start one process per variant first:
+#
+#   VARIANT=control   PORT=3001 pnpm -F @agon/demo-app dev
+#   VARIANT=treatment PORT=3002 pnpm -F @agon/demo-app dev
+#
+# then run Agon from this directory. DEMO_CONTROL_URL / DEMO_TREATMENT_URL override the URLs.
+version: 1
+name: ledgerly-onboarding
+description: Does the two-step onboarding (treatment) activate more new users than the five-step flow (control)?
+
+target:
+  kind: web
+  variants:
+    control:
+      url: ${DEMO_CONTROL_URL:-http://localhost:3001}
+      description: >-
+        Five onboarding steps after signup: email verification (the code sits in a low-contrast
+        dev hint), profile, bank connection (small skip link), invites, then the first project.
+    treatment:
+      url: ${DEMO_TREATMENT_URL:-http://localhost:3002}
+      description: >-
+        One prefilled "Create project" step after signup. Profile, bank connection and invites
+        become optional cards on the dashboard.
+  # The scenario below signs up a fresh user, so no setup hook is needed. For a returning-user
+  # scenario, point the hook at the test-user endpoint; its JSON stdout becomes the credentials:
+  #   session:
+  #     setup: ./scripts/create-test-user.sh
+  capture:
+    analytics: [posthog]
+
+population:
+  seed: 7
+  size: 40
+  personas:
+    - { use: builtin/smb-owner, weight: 0.5 }
+    - { use: builtin/developer-evaluator, weight: 0.3 }
+    - { use: builtin/skeptical-cfo, weight: 0.2 }
+
+scenarios:
+  - id: first-project
+    goal: >
+      You keep the books for a small team and just heard about Ledgerly. Decide whether it is
+      worth trying; if it is, sign up and create your first project.
+    success: event:project_created
+    maxSteps: 30
+
+metrics:
+  - { id: activation, type: conversion, event: project_created, primary: true }
+  - { id: time_to_activate, type: duration, from: session_start, to: project_created }
+  - { id: steps, type: steps }
+  - { id: frustration, type: score, source: judge, score: frustration }
+
+analysis:
+  method: bayesian
+  minSessionsPerVariant: 10
+
+export:
+  - { type: jsonl, path: ./agon-out }

@@ -200,6 +200,44 @@
                   "default": "desktop"
                 },
                 "locale": { "type": "string", "minLength": 2, "default": "en-US" },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "loop": {
+                      "type": "string",
+                      "enum": ["react", "plan-execute", "single-shot"],
+                      "default": "react"
+                    },
+                    "maxToolCalls": { "type": "integer", "exclusiveMinimum": 0, "default": 20 },
+                    "retries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 1,
+                      "description": "How many times the agent retries a failed tool call before changing approach"
+                    },
+                    "parallelTools": { "type": "boolean", "default": false },
+                    "confirmDestructive": {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Stops to ask the user before calls that look destructive"
+                    },
+                    "readsDescriptions": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.7,
+                      "description": "How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything"
+                    },
+                    "priorExposure": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0,
+                      "description": "Familiarity with this specific API or server"
+                    }
+                  },
+                  "description": "Set when this persona is an AI agent, not a person"
+                },
                 "tags": { "type": "array", "items": { "type": "string" }, "default": [] }
               },
               "required": ["id", "name", "summary", "traits"]
@@ -913,6 +951,44 @@
             "default": "desktop"
           },
           "locale": { "type": "string", "minLength": 2, "default": "en-US" },
+          "harness": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "type": "string",
+                "enum": ["react", "plan-execute", "single-shot"],
+                "default": "react"
+              },
+              "maxToolCalls": { "type": "integer", "exclusiveMinimum": 0, "default": 20 },
+              "retries": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 1,
+                "description": "How many times the agent retries a failed tool call before changing approach"
+              },
+              "parallelTools": { "type": "boolean", "default": false },
+              "confirmDestructive": {
+                "type": "boolean",
+                "default": true,
+                "description": "Stops to ask the user before calls that look destructive"
+              },
+              "readsDescriptions": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.7,
+                "description": "How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything"
+              },
+              "priorExposure": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0,
+                "description": "Familiarity with this specific API or server"
+              }
+            },
+            "description": "Set when this persona is an AI agent, not a person"
+          },
           "tags": { "type": "array", "items": { "type": "string" }, "default": [] }
         },
         "required": ["id", "name", "summary", "traits"]
@@ -1240,6 +1316,43 @@
               "frustrations": { "type": "array", "items": { "type": "string" } },
               "device": { "type": "string", "enum": ["desktop", "mobile", "tablet"] },
               "locale": { "type": "string" },
+              "harness": {
+                "type": "object",
+                "properties": {
+                  "loop": {
+                    "type": "string",
+                    "enum": ["react", "plan-execute", "single-shot"],
+                    "default": "react"
+                  },
+                  "maxToolCalls": { "type": "integer", "exclusiveMinimum": 0, "default": 20 },
+                  "retries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 1,
+                    "description": "How many times the agent retries a failed tool call before changing approach"
+                  },
+                  "parallelTools": { "type": "boolean", "default": false },
+                  "confirmDestructive": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Stops to ask the user before calls that look destructive"
+                  },
+                  "readsDescriptions": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.7,
+                    "description": "How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything"
+                  },
+                  "priorExposure": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0,
+                    "description": "Familiarity with this specific API or server"
+                  }
+                }
+              },
               "model": { "type": "string", "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$" },
               "seed": { "type": "integer", "minimum": 0 },
               "distinctId": {
@@ -1558,6 +1671,19 @@
                       "ms": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000 }
                     },
                     "required": ["type", "ms"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["tool_call"] },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Ref of a tool listed in the observation"
+                      },
+                      "arguments": { "type": "object", "additionalProperties": {}, "default": {} }
+                    },
+                    "required": ["type", "ref"]
                   },
                   {
                     "type": "object",

@@ -25,3 +25,9 @@ export type { BuildObservationOptions, RawPageState } from './web/observe.js';
 export { DEVICE_DESCRIPTORS, deviceContextOptions } from './web/devices.js';
 export { PRUNE_MIN_INTERACTIVE, PRUNE_MIN_TEXT_CHARS, pruneObservation } from './prune.js';
 export type { PruneOptions } from './prune.js';
+export {
+  analyticsGuard,
+  type AnalyticsGuardArgs,
+  type ScriptedAnalyticsPayload,
+} from './web/unload-guard.js';
+export { ANALYTICS_BINDING } from './web/session.js';

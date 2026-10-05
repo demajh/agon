@@ -762,6 +762,38 @@ export interface components {
                 device: "desktop" | "mobile" | "tablet";
                 /** @default en-US */
                 locale: string;
+                /** @description Set when this persona is an AI agent, not a person */
+                harness?: {
+                    /**
+                     * @default react
+                     * @enum {string}
+                     */
+                    loop: "react" | "plan-execute" | "single-shot";
+                    /** @default 20 */
+                    maxToolCalls: number;
+                    /**
+                     * @description How many times the agent retries a failed tool call before changing approach
+                     * @default 1
+                     */
+                    retries: number;
+                    /** @default false */
+                    parallelTools: boolean;
+                    /**
+                     * @description Stops to ask the user before calls that look destructive
+                     * @default true
+                     */
+                    confirmDestructive: boolean;
+                    /**
+                     * @description How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything
+                     * @default 0.7
+                     */
+                    readsDescriptions: number;
+                    /**
+                     * @description Familiarity with this specific API or server
+                     * @default 0
+                     */
+                    priorExposure: number;
+                };
                 /** @default [] */
                 tags: string[];
             }[];
@@ -1226,6 +1258,38 @@ export interface components {
             device: "desktop" | "mobile" | "tablet";
             /** @default en-US */
             locale: string;
+            /** @description Set when this persona is an AI agent, not a person */
+            harness?: {
+                /**
+                 * @default react
+                 * @enum {string}
+                 */
+                loop: "react" | "plan-execute" | "single-shot";
+                /** @default 20 */
+                maxToolCalls: number;
+                /**
+                 * @description How many times the agent retries a failed tool call before changing approach
+                 * @default 1
+                 */
+                retries: number;
+                /** @default false */
+                parallelTools: boolean;
+                /**
+                 * @description Stops to ask the user before calls that look destructive
+                 * @default true
+                 */
+                confirmDestructive: boolean;
+                /**
+                 * @description How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything
+                 * @default 0.7
+                 */
+                readsDescriptions: number;
+                /**
+                 * @description Familiarity with this specific API or server
+                 * @default 0
+                 */
+                priorExposure: number;
+            };
             /** @default [] */
             tags: string[];
         };
@@ -1417,6 +1481,37 @@ export interface components {
                 /** @enum {string} */
                 device: "desktop" | "mobile" | "tablet";
                 locale: string;
+                harness?: {
+                    /**
+                     * @default react
+                     * @enum {string}
+                     */
+                    loop: "react" | "plan-execute" | "single-shot";
+                    /** @default 20 */
+                    maxToolCalls: number;
+                    /**
+                     * @description How many times the agent retries a failed tool call before changing approach
+                     * @default 1
+                     */
+                    retries: number;
+                    /** @default false */
+                    parallelTools: boolean;
+                    /**
+                     * @description Stops to ask the user before calls that look destructive
+                     * @default true
+                     */
+                    confirmDestructive: boolean;
+                    /**
+                     * @description How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything
+                     * @default 0.7
+                     */
+                    readsDescriptions: number;
+                    /**
+                     * @description Familiarity with this specific API or server
+                     * @default 0
+                     */
+                    priorExposure: number;
+                };
                 model: string;
                 seed: number;
                 /** @description Stable analytics identity for this simulated user */
@@ -1632,6 +1727,15 @@ export interface components {
                     /** @enum {string} */
                     type: "wait";
                     ms: number;
+                } | {
+                    /** @enum {string} */
+                    type: "tool_call";
+                    /** @description Ref of a tool listed in the observation */
+                    ref: string;
+                    /** @default {} */
+                    arguments: {
+                        [key: string]: unknown;
+                    };
                 } | {
                     /** @enum {string} */
                     type: "give_up";

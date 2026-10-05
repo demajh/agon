@@ -1,5 +1,5 @@
 import { AdapterError, INFERRED_EVENTS } from '@agon/spec';
-import type { AdapterSession, Capture, Device, Observation } from '@agon/spec';
+import type { AdapterSession, Capture, Device, EventDraft, Observation } from '@agon/spec';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWebAdapter } from '../index.js';
 import type { WebAdapter } from '../index.js';
@@ -425,7 +425,14 @@ describe('capture', () => {
     const captureBefore = server.hitCount('/capture/');
     const session = await open('/beacon', { capture: { analytics: ['posthog'] } });
     const obs = await observeUntil(session, (o) => o.text.includes('beacon sent'));
-    const beacon = session.drainEvents().find((e) => e.event === 'beacon_event');
+    // The rerouted beacon is an ordinary fetch now; give interception a moment to see it.
+    const drained: EventDraft[] = [];
+    for (let i = 0; i < 50 && !drained.some((e) => e.event === 'beacon_event'); i++) {
+      drained.push(...session.drainEvents());
+      if (!drained.some((e) => e.event === 'beacon_event'))
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    const beacon = drained.find((e) => e.event === 'beacon_event');
     expect(beacon?.source).toBe('intercepted');
     expect(beacon?.properties).toMatchObject({ distinct_id: 'user-9' });
     expect(server.hitCount('/e/')).toBe(eBefore);
@@ -435,6 +442,7 @@ describe('capture', () => {
     expect(result.navigated).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(server.hitCount('/capture/')).toBe(captureBefore);
+    expect(server.hitCount('/e/')).toBe(eBefore);
     await session.close();
   });
 

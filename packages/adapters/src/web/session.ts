@@ -32,13 +32,25 @@ import {
   matchAnalyticsProvider,
   parseAnalyticsRequest,
 } from './analytics.js';
-import { unloadGuard } from './unload-guard.js';
+import { analyticsGuard } from './unload-guard.js';
+import { z } from 'zod';
 import { DEFAULT_MAX_INTERACTIVE, DEFAULT_MAX_TEXT_CHARS, buildObservation } from './observe.js';
 import { collectPageState } from './page-script.js';
 import type { PageScriptOptions, PageScriptResult } from './page-script.js';
 
 /** Attribute the page script stamps on interactive elements; action refs resolve through it. */
 export const AGON_REF_ATTRIBUTE = 'data-agon-ref';
+
+/** Window property the analytics guard calls; see unload-guard.ts. */
+export const ANALYTICS_BINDING = '__agonAnalytics';
+
+const ScriptedAnalyticsSchema = z.object({
+  url: z.string().min(1),
+  method: z.string().min(1),
+  headers: z.record(z.string(), z.string()),
+  body: z.string().nullable(),
+  encoding: z.enum(['utf8', 'base64']),
+});
 
 const REF_RE = /^e\d+$/;
 const MAX_BUFFERED_EVENTS = 5000;
@@ -139,8 +151,12 @@ export class WebSession implements AdapterSession {
     const session = new WebSession(page, options);
     session.attachListeners();
     if (session.capture.analytics.length > 0) {
-      await page.addInitScript(unloadGuard, {
+      await page.exposeBinding(ANALYTICS_BINDING, (_source, payload: unknown) =>
+        session.handleScriptedAnalytics(payload),
+      );
+      await page.addInitScript(analyticsGuard, {
         patterns: analyticsPatternSources(session.capture.analytics),
+        binding: ANALYTICS_BINDING,
       });
     }
     await session.installAnalyticsRoutes();
@@ -459,6 +475,32 @@ export class WebSession implements AdapterSession {
       this.unusable = true;
       this.contextClosed = true;
     });
+  }
+
+  /**
+   * Analytics calls the page made through fetch/sendBeacon arrive here from the injected guard
+   * instead of the network. Parse them like routed requests; forward from Node when asked to.
+   */
+  private async handleScriptedAnalytics(payload: unknown): Promise<void> {
+    const parsed = ScriptedAnalyticsSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { url, method, headers, body, encoding } = parsed.data;
+    const provider = matchAnalyticsProvider(url, this.capture.analytics);
+    if (provider === undefined) return;
+    const buffer =
+      body === null ? null : Buffer.from(body, encoding === 'base64' ? 'base64' : 'utf8');
+    const drafts = parseAnalyticsRequest(
+      { provider, url, method, headers, body: buffer },
+      nowIso(),
+    );
+    for (const draft of drafts) this.pushEvent(draft);
+    if (this.capture.forwardAnalytics) {
+      await fetch(url, {
+        method,
+        headers,
+        body: buffer === null ? undefined : new Uint8Array(buffer),
+      }).catch(noop);
+    }
   }
 
   private async installAnalyticsRoutes(): Promise<void> {

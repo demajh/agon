@@ -1,0 +1,9 @@
+{
+  "uncalibrated-v0": {
+    "description": "Default profile for runs whose persona parameters have not been fitted against the sim-vs-real benchmark.",
+    "directionAccuracy": null,
+    "liftCorrelation": null,
+    "note": "Simulated forecast. This profile has no benchmark calibration yet; treat direction and lift as hypotheses, not measurements.",
+    "categories": {}
+  }
+}

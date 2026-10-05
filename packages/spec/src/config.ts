@@ -16,10 +16,19 @@ export const AGON_CONFIG_VERSION = 1;
 export const DEFAULT_MODEL = 'anthropic/claude-sonnet-5-5';
 
 export const DefaultsSchema = z.object({
-  model: ModelRefSchema.default(DEFAULT_MODEL).describe('Model used when population.models is empty'),
-  judgeModel: ModelRefSchema.optional().describe('Model for the independent judge; defaults to model'),
+  model: ModelRefSchema.default(DEFAULT_MODEL).describe(
+    'Model used when population.models is empty',
+  ),
+  judgeModel: ModelRefSchema.optional().describe(
+    'Model for the independent judge; defaults to model',
+  ),
   temperature: z.number().min(0).max(2).default(0.7),
-  maxConcurrency: z.number().int().positive().default(4).describe('Sessions run in parallel per target'),
+  maxConcurrency: z
+    .number()
+    .int()
+    .positive()
+    .default(4)
+    .describe('Sessions run in parallel per target'),
 });
 
 /** The full `agon.yaml` document, which is also the definition of an Environment. */
@@ -38,7 +47,10 @@ export const AgonConfigSchema = z
     metrics: z.array(MetricSchema).default([]),
     analysis: AnalysisSchema.prefault({}),
     export: z.array(ExportSchema).default([]),
-    squad: z.object({ id: SlugSchema }).optional().describe('Squad credited with every variant in this config'),
+    squad: z
+      .object({ id: SlugSchema })
+      .optional()
+      .describe('Squad credited with every variant in this config'),
     policies: z.array(PolicySchema).default([]),
     defaults: DefaultsSchema.prefault({}),
   })
@@ -51,13 +63,37 @@ export const AgonConfigSchema = z
         message: `control "${cfg.analysis.control}" is not one of the variants: ${variantNames.join(', ')}`,
       });
     }
-    checkUnique(ctx, ['scenarios'], cfg.scenarios.map((s) => s.id), 'scenario id');
-    checkUnique(ctx, ['metrics'], cfg.metrics.map((m) => m.id), 'metric id');
-    checkUnique(ctx, ['personas'], cfg.personas.map((p) => p.id), 'persona id');
-    checkUnique(ctx, ['policies'], cfg.policies.map((p) => p.id), 'policy id');
+    checkUnique(
+      ctx,
+      ['scenarios'],
+      cfg.scenarios.map((s) => s.id),
+      'scenario id',
+    );
+    checkUnique(
+      ctx,
+      ['metrics'],
+      cfg.metrics.map((m) => m.id),
+      'metric id',
+    );
+    checkUnique(
+      ctx,
+      ['personas'],
+      cfg.personas.map((p) => p.id),
+      'persona id',
+    );
+    checkUnique(
+      ctx,
+      ['policies'],
+      cfg.policies.map((p) => p.id),
+      'policy id',
+    );
     const primaries = cfg.metrics.filter((m) => m.primary);
     if (primaries.length > 1) {
-      ctx.addIssue({ code: 'custom', path: ['metrics'], message: 'at most one metric may be primary' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['metrics'],
+        message: 'at most one metric may be primary',
+      });
     }
     const inlineIds = new Set(cfg.personas.map((p) => p.id));
     cfg.population.personas.forEach((ref, i) => {
@@ -73,10 +109,20 @@ export const AgonConfigSchema = z
 export type AgonConfig = z.infer<typeof AgonConfigSchema>;
 export type AgonConfigInput = z.input<typeof AgonConfigSchema>;
 
-function checkUnique(ctx: z.RefinementCtx, path: (string | number)[], ids: string[], what: string): void {
+function checkUnique(
+  ctx: z.RefinementCtx,
+  path: (string | number)[],
+  ids: string[],
+  what: string,
+): void {
   const seen = new Set<string>();
   ids.forEach((id, i) => {
-    if (seen.has(id)) ctx.addIssue({ code: 'custom', path: [...path, i, 'id'], message: `duplicate ${what} "${id}"` });
+    if (seen.has(id))
+      ctx.addIssue({
+        code: 'custom',
+        path: [...path, i, 'id'],
+        message: `duplicate ${what} "${id}"`,
+      });
     seen.add(id);
   });
 }
@@ -109,7 +155,9 @@ export function substituteEnv(value: unknown, env: Record<string, string | undef
     }
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === 'object') {
-      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]));
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]),
+      );
     }
     return v;
   };
@@ -143,13 +191,19 @@ export function parseAgonConfig(yamlText: string, options: ParseConfigOptions = 
   const substituted = substituteEnv(doc, options.env ?? process.env);
   const parsed = AgonConfigSchema.safeParse(substituted);
   if (!parsed.success) {
-    throw new ConfigError(`${source} is invalid:\n${z.prettifyError(parsed.error)}`, parsed.error.issues);
+    throw new ConfigError(
+      `${source} is invalid:\n${z.prettifyError(parsed.error)}`,
+      parsed.error.issues,
+    );
   }
   return parsed.data;
 }
 
 export function readAgonConfig(path: string, options: ParseConfigOptions = {}): AgonConfig {
-  return parseAgonConfig(readFileSync(path, 'utf8'), { ...options, source: options.source ?? path });
+  return parseAgonConfig(readFileSync(path, 'utf8'), {
+    ...options,
+    source: options.source ?? path,
+  });
 }
 
 /** JSON Schema (draft 2020-12) for `agon.yaml`, for editors and docs. */

@@ -96,5 +96,7 @@ export const INFERRED_EVENTS = {
   error: '$agon_error',
   abandon: '$agon_abandon',
   success: '$agon_success',
+  toolCall: '$agon_tool_call',
+  toolError: '$agon_tool_error',
 } as const;
 export type InferredEventName = (typeof INFERRED_EVENTS)[keyof typeof INFERRED_EVENTS];

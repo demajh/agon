@@ -17,11 +17,14 @@ export type InteractiveElement = z.infer<typeof InteractiveElementSchema>;
 export const ObservationSchema = z.object({
   url: z.string(),
   title: z.string().default(''),
-  text: z.string().describe('Readable page content, already truncated to the persona\'s attention'),
+  text: z.string().describe("Readable page content, already truncated to the persona's attention"),
   interactive: z.array(InteractiveElementSchema),
   errors: z.array(z.string()).default([]),
   truncated: z.boolean().default(false),
-  hash: z.string().min(1).describe('Content hash used to detect repeated states and to cache decisions'),
+  hash: z
+    .string()
+    .min(1)
+    .describe('Content hash used to detect repeated states and to cache decisions'),
   screenshotRef: z.string().optional(),
   capturedAt: TimestampSchema,
 });
@@ -36,6 +39,11 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('scroll'), direction: z.enum(['down', 'up']) }),
   z.object({ type: z.literal('back') }),
   z.object({ type: z.literal('wait'), ms: z.number().int().positive().max(10_000) }),
+  z.object({
+    type: z.literal('tool_call'),
+    ref: z.string().min(1).describe('Ref of a tool listed in the observation'),
+    arguments: z.record(z.string(), z.unknown()).default({}),
+  }),
   z.object({ type: z.literal('give_up'), reason: z.string().min(1) }),
   z.object({ type: z.literal('done'), reason: z.string().min(1) }),
 ]);
@@ -91,7 +99,13 @@ export type Step = z.infer<typeof StepSchema>;
 export const SessionStatusSchema = z.enum(['pending', 'running', 'finished', 'failed']);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
-export const SessionOutcomeSchema = z.enum(['success', 'gave_up', 'max_steps', 'budget_exceeded', 'error']);
+export const SessionOutcomeSchema = z.enum([
+  'success',
+  'gave_up',
+  'max_steps',
+  'budget_exceeded',
+  'error',
+]);
 export type SessionOutcome = z.infer<typeof SessionOutcomeSchema>;
 
 /** Independent post-hoc assessment of a session by a judge model. */
@@ -119,7 +133,10 @@ export const SessionSchema = z.object({
   costUsd: z.number().nonnegative().default(0),
   inputTokens: z.number().int().nonnegative().default(0),
   outputTokens: z.number().int().nonnegative().default(0),
-  metrics: z.record(z.string(), z.number()).default({}).describe('Metric values computed for this session'),
+  metrics: z
+    .record(z.string(), z.number())
+    .default({})
+    .describe('Metric values computed for this session'),
   judgement: JudgementSchema.optional(),
   startedAt: TimestampSchema.optional(),
   finishedAt: TimestampSchema.optional(),

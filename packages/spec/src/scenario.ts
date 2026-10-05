@@ -3,7 +3,10 @@ import { SlugSchema } from './common.js';
 
 export const SuccessCriterionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('event'), name: z.string().min(1) }),
-  z.object({ type: z.literal('url'), pattern: z.string().min(1).describe('Substring or glob matched against the current URL') }),
+  z.object({
+    type: z.literal('url'),
+    pattern: z.string().min(1).describe('Substring or glob matched against the current URL'),
+  }),
   z.object({ type: z.literal('text'), contains: z.string().min(1) }),
   z.object({ type: z.literal('judge') }),
 ]);
@@ -31,7 +34,10 @@ export const SuccessCriterionInputSchema = z
   .union([
     z
       .string()
-      .regex(SUCCESS_SHORTHAND_RE, 'use "event:<name>", "url:<pattern>", "text:<needle>" or "judge"')
+      .regex(
+        SUCCESS_SHORTHAND_RE,
+        'use "event:<name>", "url:<pattern>", "text:<needle>" or "judge"',
+      )
       .describe('Shorthand: "event:<name>", "url:<pattern>", "text:<needle>" or "judge"'),
     SuccessCriterionSchema,
   ])
@@ -48,7 +54,7 @@ export const ScenarioSchema = z.object({
   context: z
     .record(z.string(), z.string())
     .default({})
-    .describe('Extra facts the user knows, e.g. a promo code or a colleague\'s referral'),
+    .describe("Extra facts the user knows, e.g. a promo code or a colleague's referral"),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type ScenarioInput = z.input<typeof ScenarioSchema>;

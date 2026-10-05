@@ -86,6 +86,7 @@ export function planSessions(
         frustrations: [...p.frustrations],
         device: p.device,
         locale: p.locale,
+        ...(p.harness === undefined ? {} : { harness: p.harness }),
         model,
         seed,
         distinctId: `sim_${runSuffix}_${String(i).padStart(5, '0')}`,

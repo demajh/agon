@@ -110,6 +110,10 @@ export function describeAction(action: Action): string {
       return 'go back';
     case 'wait':
       return `wait ${action.ms}ms`;
+    case 'tool_call': {
+      const args = JSON.stringify(action.arguments);
+      return `call ${action.ref} with ${args.length > 200 ? `${args.slice(0, 200)}…` : args}`;
+    }
     case 'give_up':
       return `give up: ${action.reason}`;
     case 'done':

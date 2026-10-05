@@ -13,11 +13,16 @@ export const PolicySchema = z.object({
   when: z
     .string()
     .optional()
-    .describe('Boolean expression over squad and result metrics, e.g. "squad.p_best_rolling(5) < 0.10"'),
+    .describe(
+      'Boolean expression over squad and result metrics, e.g. "squad.p_best_rolling(5) < 0.10"',
+    ),
   then: PolicyActionSchema,
   method: z.enum(['thompson']).default('thompson'),
   floor: UnitSchema.default(0.1).describe('Minimum allocation any active squad keeps'),
-  approval: z.enum(['auto', 'human']).optional().describe('Defaults to human for pause/kill, auto otherwise'),
+  approval: z
+    .enum(['auto', 'human'])
+    .optional()
+    .describe('Defaults to human for pause/kill, auto otherwise'),
   cooldown: DurationSchema.default('24h'),
   maxPerDay: z.number().int().positive().default(5),
 });
@@ -28,7 +33,13 @@ export function policyApproval(p: Policy): 'auto' | 'human' {
   return p.approval ?? (p.then === 'kill' || p.then === 'pause' ? 'human' : 'auto');
 }
 
-export const DecisionStatusSchema = z.enum(['proposed', 'approved', 'rejected', 'executed', 'failed']);
+export const DecisionStatusSchema = z.enum([
+  'proposed',
+  'approved',
+  'rejected',
+  'executed',
+  'failed',
+]);
 export type DecisionStatus = z.infer<typeof DecisionStatusSchema>;
 
 /** Append-only record of every governance action Agon proposes or takes. */
@@ -47,7 +58,10 @@ export const DecisionSchema = z.object({
       metrics: z.record(z.string(), z.number()).default({}),
     })
     .prefault({}),
-  payload: z.record(z.string(), z.unknown()).default({}).describe('Action parameters, e.g. the new allocation'),
+  payload: z
+    .record(z.string(), z.unknown())
+    .default({})
+    .describe('Action parameters, e.g. the new allocation'),
   createdAt: TimestampSchema,
   decidedAt: TimestampSchema.optional(),
   executedAt: TimestampSchema.optional(),

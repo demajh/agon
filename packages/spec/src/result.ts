@@ -49,7 +49,9 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 export const CalibrationNoteSchema = z.object({
   profile: z.string().min(1),
   changeCategory: z.string().optional(),
-  directionAccuracy: UnitSchema.optional().describe('Benchmark agreement rate for this change category'),
+  directionAccuracy: UnitSchema.optional().describe(
+    'Benchmark agreement rate for this change category',
+  ),
   note: z.string().min(1),
 });
 export type CalibrationNote = z.infer<typeof CalibrationNoteSchema>;

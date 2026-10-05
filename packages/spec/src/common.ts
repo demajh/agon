@@ -34,7 +34,9 @@ export function parseModelRef(ref: ModelRef): { provider: string; model: string 
 }
 
 /** Human-friendly duration: `500ms`, `30s`, `15m`, `24h`, `7d`. */
-export const DurationSchema = z.string().regex(/^\d+(ms|s|m|h|d)$/, 'duration like 30s, 15m, 24h, 7d');
+export const DurationSchema = z
+  .string()
+  .regex(/^\d+(ms|s|m|h|d)$/, 'duration like 30s, 15m, 24h, 7d');
 export type Duration = z.infer<typeof DurationSchema>;
 
 const DURATION_MS: Record<string, number> = {
@@ -79,7 +81,12 @@ export function newId(prefix: IdPrefix, length = 16): string {
 }
 
 /** Deterministic child identifier, e.g. `ses_<run>_00042`. */
-export function deterministicId(prefix: IdPrefix, parent: string, index: number, width = 5): string {
+export function deterministicId(
+  prefix: IdPrefix,
+  parent: string,
+  index: number,
+  width = 5,
+): string {
   const parentPart = parent.includes('_') ? parent.slice(parent.indexOf('_') + 1) : parent;
   return `${prefix}_${parentPart}_${String(index).padStart(width, '0')}`;
 }

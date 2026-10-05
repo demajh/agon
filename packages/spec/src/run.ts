@@ -24,7 +24,11 @@ export const RunCountsSchema = z.object({
 
 /** Parameters a caller may override when starting a run. */
 export const RunRequestSchema = z.object({
-  variants: z.array(SlugSchema).min(1).optional().describe('Subset of variants to run; default all'),
+  variants: z
+    .array(SlugSchema)
+    .min(1)
+    .optional()
+    .describe('Subset of variants to run; default all'),
   seed: z.number().int().nonnegative().optional(),
   size: z.number().int().positive().optional().describe('Override population.size'),
   model: ModelRefSchema.optional().describe('Override defaults.model'),

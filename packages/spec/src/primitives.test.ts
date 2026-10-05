@@ -41,7 +41,10 @@ describe('success criteria', () => {
   it('parses shorthand forms', () => {
     expect(parseSuccessShorthand('event:signup')).toEqual({ type: 'event', name: 'signup' });
     expect(parseSuccessShorthand('url:/dashboard')).toEqual({ type: 'url', pattern: '/dashboard' });
-    expect(parseSuccessShorthand('text:Welcome aboard')).toEqual({ type: 'text', contains: 'Welcome aboard' });
+    expect(parseSuccessShorthand('text:Welcome aboard')).toEqual({
+      type: 'text',
+      contains: 'Welcome aboard',
+    });
     expect(parseSuccessShorthand('judge')).toEqual({ type: 'judge' });
     expect(() => parseSuccessShorthand('nope')).toThrow(/invalid success criterion/);
   });
@@ -56,22 +59,85 @@ describe('success criteria', () => {
 
 describe('defaults that encode policy', () => {
   it('metricDirection: durations, steps and frustration are lower-is-better', () => {
-    expect(metricDirection({ id: 'a', type: 'conversion', event: 'x', primary: false })).toBe('increase');
-    expect(metricDirection({ id: 'b', type: 'duration', from: 'session_start', to: 'x', primary: false })).toBe('decrease');
+    expect(metricDirection({ id: 'a', type: 'conversion', event: 'x', primary: false })).toBe(
+      'increase',
+    );
+    expect(
+      metricDirection({
+        id: 'b',
+        type: 'duration',
+        from: 'session_start',
+        to: 'x',
+        primary: false,
+      }),
+    ).toBe('decrease');
     expect(metricDirection({ id: 'c', type: 'steps', primary: false })).toBe('decrease');
     expect(
-      metricDirection({ id: 'd', type: 'score', source: 'judge', score: 'frustration', primary: false }),
+      metricDirection({
+        id: 'd',
+        type: 'score',
+        source: 'judge',
+        score: 'frustration',
+        primary: false,
+      }),
     ).toBe('decrease');
     expect(
-      metricDirection({ id: 'e', type: 'score', source: 'judge', score: 'satisfaction', primary: false }),
+      metricDirection({
+        id: 'e',
+        type: 'score',
+        source: 'judge',
+        score: 'satisfaction',
+        primary: false,
+      }),
     ).toBe('increase');
   });
   it('policyApproval: destructive actions need a human unless stated otherwise', () => {
-    const base = { id: 'p', on: 'result.ready', method: 'thompson', floor: 0.1, cooldown: '24h', maxPerDay: 5 } as const;
+    const base = {
+      id: 'p',
+      on: 'result.ready',
+      method: 'thompson',
+      floor: 0.1,
+      cooldown: '24h',
+      maxPerDay: 5,
+    } as const;
     expect(policyApproval({ ...base, then: 'kill' })).toBe('human');
     expect(policyApproval({ ...base, then: 'pause' })).toBe('human');
     expect(policyApproval({ ...base, then: 'reallocate' })).toBe('auto');
     expect(policyApproval({ ...base, then: 'kill', approval: 'auto' })).toBe('auto');
+  });
+});
+
+describe('agent targets', () => {
+  it('accepts tool_call actions and agent personas with harness defaults', async () => {
+    const { ActionSchema, PersonaSchema, INFERRED_EVENTS } = await import('./index.js');
+    expect(
+      ActionSchema.parse({ type: 'tool_call', ref: 't1', arguments: { path: '/tmp' } }),
+    ).toEqual({
+      type: 'tool_call',
+      ref: 't1',
+      arguments: { path: '/tmp' },
+    });
+    expect(ActionSchema.parse({ type: 'tool_call', ref: 't1' }).type).toBe('tool_call');
+    const persona = PersonaSchema.parse({
+      id: 'coding-assistant',
+      name: 'Coding assistant',
+      summary: 'You are a coding assistant.',
+      traits: { role: 'agent' },
+      harness: { loop: 'react', confirmDestructive: false },
+    });
+    expect(persona.harness).toEqual({
+      loop: 'react',
+      maxToolCalls: 20,
+      retries: 1,
+      parallelTools: false,
+      confirmDestructive: false,
+      readsDescriptions: 0.7,
+      priorExposure: 0,
+    });
+    expect(
+      PersonaSchema.parse({ id: 'p', name: 'P', summary: 's', traits: { role: 'r' } }).harness,
+    ).toBeUndefined();
+    expect(INFERRED_EVENTS.toolCall).toBe('$agon_tool_call');
   });
 });
 
@@ -82,7 +148,11 @@ describe('errors', () => {
     expect(err).toBeInstanceOf(AgonError);
     expect(err.status).toBe(404);
     expect(err.toJSON()).toEqual({
-      error: { code: 'not_found', message: 'run not found: run_x', details: { resource: 'run', id: 'run_x' } },
+      error: {
+        code: 'not_found',
+        message: 'run not found: run_x',
+        details: { resource: 'run', id: 'run_x' },
+      },
     });
   });
 });

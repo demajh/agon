@@ -28,15 +28,47 @@ export const PersonaTraitsSchema = z.object({
 });
 export type PersonaTraits = z.infer<typeof PersonaTraitsSchema>;
 
+export const HarnessLoopSchema = z.enum(['react', 'plan-execute', 'single-shot']);
+export type HarnessLoop = z.infer<typeof HarnessLoopSchema>;
+
+/**
+ * Present when the persona is an AI agent rather than a person (mcp and http targets). These are
+ * the behavioural knobs of the harness driving the model.
+ */
+export const HarnessSchema = z.object({
+  loop: HarnessLoopSchema.default('react'),
+  maxToolCalls: z.number().int().positive().default(20),
+  retries: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(1)
+    .describe('How many times the agent retries a failed tool call before changing approach'),
+  parallelTools: z.boolean().default(false),
+  confirmDestructive: z
+    .boolean()
+    .default(true)
+    .describe('Stops to ask the user before calls that look destructive'),
+  readsDescriptions: UnitSchema.default(0.7).describe(
+    'How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything',
+  ),
+  priorExposure: UnitSchema.default(0).describe('Familiarity with this specific API or server'),
+});
+export type Harness = z.infer<typeof HarnessSchema>;
+
 export const PersonaSchema = z.object({
   id: SlugSchema,
   name: z.string().min(1),
-  summary: z.string().min(1).describe('One paragraph, written in the second person, used verbatim in the agent prompt'),
+  summary: z
+    .string()
+    .min(1)
+    .describe('One paragraph, written in the second person, used verbatim in the agent prompt'),
   traits: PersonaTraitsSchema,
   goals: z.array(z.string().min(1)).default([]),
   frustrations: z.array(z.string().min(1)).default([]),
   device: DeviceSchema.default('desktop'),
   locale: z.string().min(2).default('en-US'),
+  harness: HarnessSchema.optional().describe('Set when this persona is an AI agent, not a person'),
   tags: z.array(z.string()).default([]),
 });
 export type Persona = z.infer<typeof PersonaSchema>;
@@ -58,7 +90,8 @@ export const BUILTIN_PERSONA_PREFIX = 'builtin/';
 
 export function personaRefKind(ref: PersonaRef): 'builtin' | 'file' | 'inline' {
   if (ref.use.startsWith(BUILTIN_PERSONA_PREFIX)) return 'builtin';
-  if (ref.use.startsWith('./') || ref.use.startsWith('../') || ref.use.startsWith('/')) return 'file';
+  if (ref.use.startsWith('./') || ref.use.startsWith('../') || ref.use.startsWith('/'))
+    return 'file';
   return 'inline';
 }
 
@@ -72,6 +105,7 @@ export const PersonaInstanceSchema = z.object({
   frustrations: z.array(z.string()),
   device: DeviceSchema,
   locale: z.string(),
+  harness: HarnessSchema.optional(),
   model: ModelRefSchema,
   seed: z.number().int().nonnegative(),
   distinctId: z.string().min(1).describe('Stable analytics identity for this simulated user'),

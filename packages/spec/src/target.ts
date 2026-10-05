@@ -23,7 +23,7 @@ export const CaptureSchema = z.object({
   analytics: z
     .array(AnalyticsProviderSchema)
     .default([])
-    .describe('Intercept the app\'s own analytics calls and attribute them to the simulated user'),
+    .describe("Intercept the app's own analytics calls and attribute them to the simulated user"),
   forwardAnalytics: z
     .boolean()
     .default(false)
@@ -38,7 +38,9 @@ export const SessionHooksSchema = z.object({
   setup: z
     .string()
     .optional()
-    .describe('Command run before each session; its JSON stdout is passed to the user as credentials/context'),
+    .describe(
+      'Command run before each session; its JSON stdout is passed to the user as credentials/context',
+    ),
   teardown: z.string().optional(),
   timeoutMs: z.number().int().positive().default(60_000),
 });
@@ -71,7 +73,11 @@ export const TargetSchema = z
         });
       }
       if (t.kind === 'cli' && !v.command && !v.image) {
-        ctx.addIssue({ code: 'custom', path: ['variants', name], message: 'cli variants need a command' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['variants', name],
+          message: 'cli variants need a command',
+        });
       }
     }
   });

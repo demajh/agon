@@ -51,7 +51,9 @@ describe('parseAgonConfig', () => {
   it('rejects a control that is not a variant', () => {
     const text = example.replace('method: bayesian', 'method: bayesian\n  control: nope');
     expect(() => parseAgonConfig(text, { env })).toThrow(ConfigError);
-    expect(() => parseAgonConfig(text, { env })).toThrow(/control "nope" is not one of the variants/);
+    expect(() => parseAgonConfig(text, { env })).toThrow(
+      /control "nope" is not one of the variants/,
+    );
   });
 
   it('rejects duplicate scenario ids', () => {
@@ -63,7 +65,10 @@ describe('parseAgonConfig', () => {
   });
 
   it('rejects web variants without a url', () => {
-    const text = example.replace('      url: https://app.example.com\n', '      description: no url\n');
+    const text = example.replace(
+      '      url: https://app.example.com\n',
+      '      description: no url\n',
+    );
     expect(() => parseAgonConfig(text, { env })).toThrow(/web variants need a url/);
   });
 
@@ -92,7 +97,9 @@ describe('controlVariant', () => {
   it('prefers analysis.control, then "control", then the first variant', () => {
     const cfg = parseAgonConfig(example, { env });
     expect(controlVariant(cfg)).toBe('control');
-    expect(controlVariant({ ...cfg, analysis: { ...cfg.analysis, control: 'treatment' } })).toBe('treatment');
+    expect(controlVariant({ ...cfg, analysis: { ...cfg.analysis, control: 'treatment' } })).toBe(
+      'treatment',
+    );
     const renamed = {
       ...cfg,
       target: {
@@ -110,7 +117,16 @@ describe('agonConfigJsonSchema', () => {
     expect(String(schema['$schema'])).toContain('2020-12');
     const properties = schema['properties'] as Record<string, unknown>;
     expect(Object.keys(properties)).toEqual(
-      expect.arrayContaining(['version', 'name', 'target', 'population', 'scenarios', 'metrics', 'analysis', 'export']),
+      expect.arrayContaining([
+        'version',
+        'name',
+        'target',
+        'population',
+        'scenarios',
+        'metrics',
+        'analysis',
+        'export',
+      ]),
     );
     expect(JSON.stringify(schema)).toContain('event:<name>');
   });

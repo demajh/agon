@@ -84,6 +84,7 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 | `frustrations` | array of string |  | `[]` |  |
 | `device` | `desktop` \| `mobile` \| `tablet` |  | `"desktop"` |  |
 | `locale` | string |  | `"en-US"` |  |
+| `harness` | object |  |  | Set when this persona is an AI agent, not a person |
 | `tags` | array of string |  | `[]` |  |
 
 ## `personas[].traits`
@@ -97,6 +98,18 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 | `domainFamiliarity` | number |  | `0.5` | Prior knowledge of this product category and its jargon |
 | `riskTolerance` | number |  | `0.5` | Willingness to hand over data, pay, or commit |
 | `priceSensitivity` | number |  | `0.5` |  |
+
+## `personas[].harness`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `loop` | `react` \| `plan-execute` \| `single-shot` |  | `"react"` |  |
+| `maxToolCalls` | integer |  | `20` |  |
+| `retries` | integer |  | `1` | How many times the agent retries a failed tool call before changing approach |
+| `parallelTools` | boolean |  | `false` |  |
+| `confirmDestructive` | boolean |  | `true` | Stops to ask the user before calls that look destructive |
+| `readsDescriptions` | number |  | `0.7` | How carefully tool descriptions and schemas are read: 0 guesses from names, 1 reads everything |
+| `priorExposure` | number |  | `0` | Familiarity with this specific API or server |
 
 ## `population`
 

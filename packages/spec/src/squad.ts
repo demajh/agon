@@ -5,9 +5,21 @@ export const SquadStatusSchema = z.enum(['active', 'paused', 'killed']);
 export type SquadStatus = z.infer<typeof SquadStatusSchema>;
 
 export const TicketSourceSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('linear'), teamId: z.string().min(1), label: z.string().default('agon:paused') }),
-  z.object({ kind: z.literal('jira'), projectKey: z.string().min(1), label: z.string().default('agon-paused') }),
-  z.object({ kind: z.literal('github'), repo: z.string().min(1), label: z.string().default('agon:paused') }),
+  z.object({
+    kind: z.literal('linear'),
+    teamId: z.string().min(1),
+    label: z.string().default('agon:paused'),
+  }),
+  z.object({
+    kind: z.literal('jira'),
+    projectKey: z.string().min(1),
+    label: z.string().default('agon-paused'),
+  }),
+  z.object({
+    kind: z.literal('github'),
+    repo: z.string().min(1),
+    label: z.string().default('agon:paused'),
+  }),
 ]);
 export type TicketSource = z.infer<typeof TicketSourceSchema>;
 
@@ -27,7 +39,9 @@ export const SquadSchema = z.object({
   status: SquadStatusSchema.default('active'),
   controlUrl: z.url().optional().describe('Webhook that receives Squad Control Protocol messages'),
   ticketSource: TicketSourceSchema.optional(),
-  allocation: UnitSchema.default(0).describe('Share of work or compute currently routed to this squad'),
+  allocation: UnitSchema.default(0).describe(
+    'Share of work or compute currently routed to this squad',
+  ),
   score: SquadScoreSchema.prefault({}),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,

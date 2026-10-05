@@ -8,7 +8,9 @@ export const ExportSchema = z.discriminatedUnion('type', [
     type: z.literal('posthog'),
     projectApiKey: z.string().min(1),
     host: z.url().default('https://us.i.posthog.com'),
-    experimentKey: SlugSchema.optional().describe('Feature-flag key so PostHog Experiments can read the results'),
+    experimentKey: SlugSchema.optional().describe(
+      'Feature-flag key so PostHog Experiments can read the results',
+    ),
   }),
   z.object({
     type: z.literal('amplitude'),

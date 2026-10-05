@@ -6,12 +6,18 @@ export type AnalysisMethod = z.infer<typeof AnalysisMethodSchema>;
 
 export const AnalysisSchema = z.object({
   method: AnalysisMethodSchema.default('bayesian'),
-  control: SlugSchema.optional().describe('Variant treated as baseline; defaults to "control" or the first variant'),
+  control: SlugSchema.optional().describe(
+    'Variant treated as baseline; defaults to "control" or the first variant',
+  ),
   minSessionsPerVariant: z.number().int().positive().default(30),
   decision: z
     .object({
-      shipIf: UnitSchema.default(0.95).describe('P(best) at or above which the variant is a ship candidate'),
-      killIf: UnitSchema.default(0.05).describe('P(best) at or below which the variant is a kill candidate'),
+      shipIf: UnitSchema.default(0.95).describe(
+        'P(best) at or above which the variant is a ship candidate',
+      ),
+      killIf: UnitSchema.default(0.05).describe(
+        'P(best) at or below which the variant is a kill candidate',
+      ),
     })
     .prefault({}),
   alpha: z.number().gt(0).lt(1).default(0.05),

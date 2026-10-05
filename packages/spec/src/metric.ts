@@ -5,7 +5,10 @@ const base = {
   id: SlugSchema,
   name: z.string().optional(),
   primary: z.boolean().default(false),
-  direction: z.enum(['increase', 'decrease']).optional().describe('Which way is better; defaults per type'),
+  direction: z
+    .enum(['increase', 'decrease'])
+    .optional()
+    .describe('Which way is better; defaults per type'),
 };
 
 export const MetricSchema = z.discriminatedUnion('type', [

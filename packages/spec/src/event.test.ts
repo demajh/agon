@@ -39,7 +39,9 @@ describe('simulation markers', () => {
   });
 
   it('AgonEventSchema accepts marked events and rejects unmarked ones', () => {
-    expect(AgonEventSchema.safeParse(event({ ...simProperties(ctx), plan: 'pro' })).success).toBe(true);
+    expect(AgonEventSchema.safeParse(event({ ...simProperties(ctx), plan: 'pro' })).success).toBe(
+      true,
+    );
     const bad = AgonEventSchema.safeParse(event({ plan: 'pro' }));
     expect(bad.success).toBe(false);
     if (!bad.success) expect(bad.error.issues[0]?.message).toMatch(/missing simulation markers/);

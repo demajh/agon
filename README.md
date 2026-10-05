@@ -46,9 +46,11 @@ Requires Node >= 22, pnpm, uv, and Docker.
 
 ```
 pnpm install
-docker compose up -d        # Postgres + MinIO
+docker compose up -d        # Postgres, the API and worker, and both demo app variants
 pnpm build && pnpm test
 ```
+
+The compose stack starts the API with a development operator key, `dev-operator-key`. Before exposing a server beyond localhost, set `AGON_API_KEYS` to your own `<key>:<role>` list (roles: `observer`, `operator`, `squad`) and rotate it like any other credential.
 
 See [CLAUDE.md](CLAUDE.md) for the rules every change follows.
 

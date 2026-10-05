@@ -1,0 +1,74 @@
+# Example agon.yaml used by the spec tests. Mirrors the quickstart in examples/demo-app.
+version: 1
+name: onboarding-redesign
+description: Does the shorter onboarding flow activate more new users?
+
+target:
+  kind: web
+  variants:
+    control:
+      url: https://app.example.com
+    treatment:
+      url: ${PREVIEW_URL}
+      squad: squad-blue
+  session:
+    setup: ./scripts/create-test-user.sh
+    teardown: ./scripts/delete-test-user.sh
+  capture:
+    analytics: [posthog]
+
+personas:
+  - id: skeptical-cfo
+    name: Skeptical CFO
+    summary: >
+      You run finance for a 40-person company. You were asked to evaluate this tool but you
+      suspect it is another subscription nobody will use. You want to see pricing and proof fast.
+    traits:
+      role: CFO at a mid-size company
+      techProficiency: intermediate
+      patience: 0.25
+      attention: 0.3
+      priceSensitivity: 0.9
+    goals: [find pricing, find a reason to say no]
+    frustrations: [marketing fluff, mandatory demos]
+
+population:
+  seed: 7
+  size: 300
+  models:
+    - anthropic/claude-sonnet-5-5
+    - openai/gpt-5
+  personas:
+    - { use: builtin/smb-owner, weight: 0.4 }
+    - { use: builtin/developer-evaluator, weight: 0.4 }
+    - { use: skeptical-cfo, weight: 0.2 }
+
+scenarios:
+  - id: first-project
+    goal: >
+      You just heard about this product. Decide whether it is worth trying; if so, sign up and
+      create a first project.
+    success: event:project_created
+    maxSteps: 40
+    budgetUsd: 0.5
+
+metrics:
+  - { id: activation, type: conversion, event: project_created, primary: true }
+  - { id: time_to_activate, type: duration, from: session_start, to: project_created }
+  - { id: frustration, type: score, source: judge, score: frustration }
+
+analysis:
+  method: bayesian
+  minSessionsPerVariant: 100
+
+export:
+  - type: posthog
+    projectApiKey: ${POSTHOG_SIM_KEY}
+    experimentKey: onboarding-redesign
+  - type: jsonl
+    path: ./agon-out
+
+policies:
+  - id: pause-laggards
+    when: squad.p_best_rolling(5) < 0.10
+    then: pause

@@ -1,16 +1,30 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "agentGuidance": false,
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "test": {
-      "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "AGON_LLM_MODE", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "DATABASE_URL",
+        "AGON_LLM_MODE",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY"
+      ]
     },
     "dev": {
       "cache": false,

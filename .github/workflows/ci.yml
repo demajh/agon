@@ -43,14 +43,12 @@ jobs:
       - run: pnpm typecheck
       - name: Install Playwright browsers
         run: pnpm -F @agon/adapters exec playwright install --with-deps chromium
-        if: hashFiles('packages/adapters/package.json') != ''
       - run: pnpm test
 
   python:
     name: stats
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: hashFiles('packages/stats/pyproject.toml') != ''
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

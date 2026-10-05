@@ -44,6 +44,13 @@
         "AGON_LLM_MODE",
         "AGON_SKIP_STATS_TESTS"
       ]
+    },
+    "@agon/adapters#test": {
+      "dependsOn": [
+        "^build",
+        "@agon/server#test",
+        "@agon/db#test"
+      ]
     }
   }
 }

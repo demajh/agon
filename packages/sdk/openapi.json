@@ -302,8 +302,8 @@
                   "oneOf": [
                     {
                       "type": "string",
-                      "pattern": "^(event|url|text):(.+)$|^judge$",
-                      "description": "Shorthand: \"event:<name>\", \"url:<pattern>\", \"text:<needle>\" or \"judge\""
+                      "pattern": "^(event|url|text|check):(.+)$|^judge$",
+                      "description": "Shorthand: \"event:<name>\", \"url:<pattern>\", \"text:<needle>\", \"check:<command>\" or \"judge\""
                     },
                     {
                       "type": "object",
@@ -337,6 +337,18 @@
                       "type": "object",
                       "properties": { "type": { "type": "string", "enum": ["judge"] } },
                       "required": ["type"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string", "enum": ["check"] },
+                        "command": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Shell command run after the session; exit code 0 means success. Receives AGON_RUN_ID, AGON_SESSION_ID, AGON_VARIANT, AGON_VARIANT_URL, AGON_CREDENTIALS (JSON from the setup hook) and AGON_DECLARED_DONE."
+                        }
+                      },
+                      "required": ["type", "command"]
                     }
                   ]
                 },

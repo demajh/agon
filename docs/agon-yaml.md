@@ -134,7 +134,7 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 |---|---|---|---|---|
 | `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
 | `goal` | string | yes |  | What the user is trying to do, in their own words |
-| `success` | string matching `^(event|url|text):(.+)$|^judge$` or one of the variants below | yes |  |  |
+| `success` | string matching `^(event|url|text|check):(.+)$|^judge$` or one of the variants below | yes |  |  |
 | `startPath` | string |  | `"/"` |  |
 | `maxSteps` | integer |  | `30` |  |
 | `budgetUsd` | number |  | `0.5` |  |

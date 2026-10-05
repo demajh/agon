@@ -39,6 +39,8 @@ export function criterionMet(
         observation.text.toLowerCase().includes(criterion.contains.toLowerCase())
       );
     case 'judge':
+    case 'check':
+      // Decided after the session: by the judge model, or by running the check command.
       return false;
   }
 }

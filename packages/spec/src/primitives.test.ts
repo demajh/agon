@@ -46,6 +46,10 @@ describe('success criteria', () => {
       contains: 'Welcome aboard',
     });
     expect(parseSuccessShorthand('judge')).toEqual({ type: 'judge' });
+    expect(parseSuccessShorthand('check:./verify.sh --strict')).toEqual({
+      type: 'check',
+      command: './verify.sh --strict',
+    });
     expect(() => parseSuccessShorthand('nope')).toThrow(/invalid success criterion/);
   });
   it('accepts object form through the input schema', () => {

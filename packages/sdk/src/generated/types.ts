@@ -839,6 +839,11 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     type: "judge";
+                } | {
+                    /** @enum {string} */
+                    type: "check";
+                    /** @description Shell command run after the session; exit code 0 means success. Receives AGON_RUN_ID, AGON_SESSION_ID, AGON_VARIANT, AGON_VARIANT_URL, AGON_CREDENTIALS (JSON from the setup hook) and AGON_DECLARED_DONE. */
+                    command: string;
                 };
                 /** @default / */
                 startPath: string;

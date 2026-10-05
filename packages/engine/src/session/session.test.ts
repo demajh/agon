@@ -201,6 +201,38 @@ describe('runSession', () => {
     expect(verified.session.outcome).toBe('success');
   });
 
+  it('decides check criteria by running the command after the session', async () => {
+    const passing = await setup(happyUser, {
+      scenarios: [
+        {
+          id: 's',
+          goal: 'Create a project.',
+          success: `check:node -e "process.exit(process.env.AGON_SESSION_ID && process.env.AGON_DECLARED_DONE === 'true' ? 0 : 1)"`,
+          maxSteps: 12,
+        },
+      ],
+    }).run();
+    expect(passing.session.outcome).toBe('success');
+    expect(passing.session.outcomeReason).toBe('state check passed');
+    expect(passing.session.steps).toBe(7);
+
+    const failing = await setup(happyUser, {
+      scenarios: [
+        {
+          id: 's',
+          goal: 'Create a project.',
+          success: `check:node -e "console.error('no project row'); process.exit(1)"`,
+          maxSteps: 12,
+        },
+      ],
+    }).run();
+    expect(failing.session.outcome).toBe('gave_up');
+    expect(failing.session.outcomeReason).toMatch(
+      /state check failed after the agent declared done/,
+    );
+    expect(failing.session.outcomeReason).toMatch(/no project row/);
+  });
+
   it('uses the judge for judge criteria and score metrics', async () => {
     const { run, llm } = setup(happyUser, {
       scenarios: [{ id: 's', goal: 'Create a project.', success: 'judge', maxSteps: 12 }],

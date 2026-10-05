@@ -151,7 +151,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   let declaredDone = false;
   let adapterSession: AdapterSession | undefined;
   let credentials: Record<string, string> | undefined;
-  const hookEnv = {
+  const hookEnv: Record<string, string> = {
     AGON_RUN_ID: runId,
     AGON_SESSION_ID: session.id,
     AGON_VARIANT: plan.variant,
@@ -167,6 +167,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         timeoutMs: config.target.session.timeoutMs,
       });
       credentials = hook.output;
+      hookEnv.AGON_CREDENTIALS = JSON.stringify(credentials);
     }
     adapterSession = await deps.adapter.open(variantSpec, {
       sessionId: session.id,
@@ -325,7 +326,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       }
       if (action.type === 'done') {
         declaredDone = true;
-        if (scenario.success.type === 'judge') {
+        if (scenario.success.type === 'judge' || scenario.success.type === 'check') {
           outcomeReason = `declared done: ${action.reason}`;
           break;
         }
@@ -388,6 +389,31 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       } catch (error) {
         log.warn({ err: error }, 'teardown hook failed');
       }
+    }
+  }
+
+  if (scenario.success.type === 'check' && session.status !== 'failed') {
+    const check = scenario.success;
+    try {
+      await runHook(check.command, {
+        cwd: deps.cwd,
+        env: { ...hookEnv, AGON_DECLARED_DONE: String(declaredDone), AGON_OUTCOME: outcome ?? '' },
+        timeoutMs: config.target.session.timeoutMs,
+      });
+      outcome = 'success';
+      outcomeReason = 'state check passed';
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? (error.message.trim().split('\n').at(-1) ?? error.message)
+          : String(error);
+      if (outcome === undefined) {
+        outcome = 'gave_up';
+        outcomeReason = `state check failed after the agent declared done: ${detail}`;
+      } else {
+        outcomeReason = `${outcomeReason ?? outcome}; state check failed: ${detail}`;
+      }
+      log.info({ check: check.command }, 'state check failed');
     }
   }
 

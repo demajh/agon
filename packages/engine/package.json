@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./fakes": {
+      "types": "./dist/fakes/index.d.ts",
+      "import": "./dist/fakes/index.js"
     }
   },
   "files": [

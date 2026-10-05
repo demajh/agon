@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigError } from '@agon/spec';
 import { describe, expect, it } from 'vitest';
-import { testConfig } from '../testing/config.js';
+import { testConfig } from '../fakes/config.js';
 import { findBuiltinPersonaDir, loadPersonaDir, resolvePersonas } from './personas.js';
 import { planSessions } from './sampler.js';
 

@@ -1,8 +1,8 @@
 import { RunSchema } from '@agon/spec';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
-import { testConfig } from '../testing/config.js';
-import { FakeAdapter, FakeLlm, MemoryRecorder, happyUser, ledgerlySite } from '../testing/fakes.js';
+import { testConfig } from '../fakes/config.js';
+import { FakeAdapter, FakeLlm, MemoryRecorder, happyUser, ledgerlySite } from '../fakes/fakes.js';
 import { runExperiment } from './orchestrator.js';
 
 const logger = pino({ level: 'silent' });

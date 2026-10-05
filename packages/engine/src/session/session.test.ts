@@ -5,7 +5,7 @@ import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 import { resolvePersonas } from '../population/personas.js';
 import { planSessions } from '../population/sampler.js';
-import { testConfig } from '../testing/config.js';
+import { testConfig } from '../fakes/config.js';
 import {
   FakeAdapter,
   FakeLlm,
@@ -13,7 +13,7 @@ import {
   happyUser,
   ledgerlySite,
   type UserPolicy,
-} from '../testing/fakes.js';
+} from '../fakes/fakes.js';
 import { computeSessionMetrics } from './metrics.js';
 import { runSession } from './runner.js';
 import { criterionMet, urlMatches } from './success.js';

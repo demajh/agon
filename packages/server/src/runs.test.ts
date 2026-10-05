@@ -196,9 +196,21 @@ describeDb('run lifecycle through the pg-boss worker', () => {
     expect(readFileSync(join(runDir, 'sessions.jsonl'), 'utf8').trim().split('\n')).toHaveLength(4);
     expect(existsSync(join(runDir, 'result.json'))).toBe(true);
 
-    const blue = (
-      await (await h.t.request('GET', '/v1/squads')).json<{ items: Squad[] }>()
-    ).items.find((s) => s.slug === 'blue');
+    // Scoring and webhooks happen after the run row turns completed; poll instead of racing them.
+    const blue = await (async () => {
+      let found: Squad | undefined;
+      for (let i = 0; i < 150; i++) {
+        found = (
+          await (await h.t.request('GET', '/v1/squads')).json<{ items: Squad[] }>()
+        ).items.find((s) => s.slug === 'blue');
+        const completedSeen = webhooks.requests.some(
+          (r) => (r.body as { event: string }).event === 'run.completed',
+        );
+        if (found && found.score.runs >= 1 && completedSeen) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return found;
+    })();
     expect(blue?.score.runs).toBe(1);
     expect(blue?.score.costUsd).toBeGreaterThan(0);
 

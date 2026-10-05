@@ -43,7 +43,7 @@ await adapter.dispose();
 
 Agon connects to a Model Context Protocol server as a client, so a population of simulated agents
 (coding assistants, custom tool loops) can be run against it. The observation is the server's
-catalog; the actions are tool calls. See `docs/agent-usability.md` for the why.
+catalog; the actions are tool calls.
 
 ```ts
 import { createMcpAdapter } from '@agon/adapters';

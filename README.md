@@ -4,7 +4,7 @@ Simulated-user A/B testing and agentic-squad governance for AI-generated softwar
 
 Agon spins up simulation environments in which LLM-driven users with realistic personas work through variants of your product. It records every session, analyzes the sessions as an experiment, exports the results to the analytics stack you already use (PostHog, Amplitude, your warehouse), and governs the agentic development squads that produced the variants: scoring them, re-allocating work between them, and pausing or killing the ones that lose.
 
-**Status:** pre-alpha, under active construction. The design and roadmap are in [PLAN.md](PLAN.md).
+**Status:** pre-alpha, under active construction.
 
 ## Layout
 
@@ -38,7 +38,7 @@ pnpm agon compare ./agon-out
 
 Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md).
 
-Agon also simulates populations of **AI agents** against MCP servers and APIs: personas with a `harness` block drive `mcp` targets through tool calls, and `check:` success criteria verify the resulting state. See [docs/agent-usability.md](docs/agent-usability.md).
+Agon also simulates populations of **AI agents** against MCP servers and APIs: personas with a `harness` block drive `mcp` targets through tool calls, and `check:` success criteria verify the resulting state. See the MCP section of the [quickstart](docs/quickstart.md#running-against-an-mcp-server).
 
 ## Development
 
@@ -54,4 +54,4 @@ See [CLAUDE.md](CLAUDE.md) for the rules every change follows.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE). The `ee/` directory is reserved for separately licensed commercial features and is empty in this distribution.
+Apache-2.0. See [LICENSE](LICENSE).

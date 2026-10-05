@@ -3,7 +3,7 @@
 End-to-end proof that the pieces of Agon work together on a real browser and a real target. Every
 other package tests itself against fakes; this one starts the Ledgerly demo app in-process, drives
 it with the Playwright web adapter, and lets a scripted LLM play the user. It is the evidence for
-the Phase 1 and Phase 2 gates in `PLAN.md` section 8.
+the engine, adapter, exporter and stats path end to end.
 
 Nothing here needs an API key or the network beyond `127.0.0.1`. The only external requirement is
 Chromium for the pinned Playwright (`pnpm -F @agon/adapters exec playwright install chromium`) and,

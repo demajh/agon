@@ -1,6 +1,6 @@
 # Agon — operating manual for coding agents
 
-Agon runs simulated users (LLM agents with personas) against variants of a software product, records every session, analyzes the sessions as an experiment, and governs the agentic squads that produced the variants. PLAN.md holds the full design and roadmap. This file holds the rules every change must follow.
+Agon runs simulated users (LLM agents with personas) against variants of a software product, records every session, analyzes the sessions as an experiment, and governs the agentic squads that produced the variants. This file holds the rules every change must follow.
 
 ## Repo map
 
@@ -20,7 +20,6 @@ Agon runs simulated users (LLM agents with personas) against variants of a softw
 | `personas/` | Built-in persona library (YAML). |
 | `bench/` | Calibration harness and sim-vs-real datasets. |
 | `deploy/` | Dockerfiles. `compose.yaml` at the root is the self-host entry point. |
-| `ee/` | Commercial features, separately licensed. Empty in open source. |
 
 ## Commands
 

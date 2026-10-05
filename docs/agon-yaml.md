@@ -40,7 +40,7 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 |---|---|---|---|---|
 | `url` | url |  |  | Entry URL (web/http/mcp targets) |
 | `image` | string |  |  | Container image to run for this variant (later phase) |
-| `command` | string |  |  | Command to run (cli targets) |
+| `command` | string |  |  | Command to run (cli targets, and mcp servers over stdio) |
 | `env` | map of string |  | `{}` |  |
 | `headers` | map of string |  | `{}` |  |
 | `description` | string |  |  |  |

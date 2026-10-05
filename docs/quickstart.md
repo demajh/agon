@@ -54,3 +54,7 @@ pnpm agon trace   ./agon-out 3           # replay session #3 step by step
 ## Exporting
 
 Add sinks to `export:` in `agon.yaml`. `jsonl` and `parquet` write local tables; `posthog` sends marked events with `$feature/<experimentKey>` so PostHog Experiments reads them natively; `amplitude` uses the HTTP v2 API. Every exported event carries `agon_simulated: true`.
+
+## Running against an MCP server
+
+Set `target.kind: mcp` and give each variant either a `url` (Streamable HTTP) or a `command` (stdio, for example `npx my-server --stdio`). Use agent personas (the built-ins whose ids end in `-agent`, or your own with a `harness` block), state the task as the scenario goal, and verify the outcome with `success: check:<command>` or `text:<needle>` on the tool results. Metrics such as `{ id: tool_calls, type: count, event: $agon_tool_call }` and `tool_errors` on `$agon_tool_error` measure agent usability directly. Everything else, including `compare` and `trace`, is unchanged.

@@ -72,6 +72,24 @@ describe('parseAgonConfig', () => {
     expect(() => parseAgonConfig(text, { env })).toThrow(/web variants need a url/);
   });
 
+  it('accepts mcp variants launched by command and rejects ones with neither url nor command', () => {
+    const base = example.replace('kind: web', 'kind: mcp');
+    const byCommand = base.replace(
+      '      url: https://app.example.com\n',
+      '      command: npx my-mcp-server --stdio\n',
+    );
+    expect(parseAgonConfig(byCommand, { env }).target.variants['control']?.command).toBe(
+      'npx my-mcp-server --stdio',
+    );
+    const neither = base.replace(
+      '      url: https://app.example.com\n',
+      '      description: nothing\n',
+    );
+    expect(() => parseAgonConfig(neither, { env })).toThrow(
+      /mcp variants need a url \(streamable http\) or a command \(stdio\)/,
+    );
+  });
+
   it('rejects more than one primary metric', () => {
     const text = example.replace('to: project_created }', 'to: project_created, primary: true }');
     expect(() => parseAgonConfig(text, { env })).toThrow(/at most one metric may be primary/);

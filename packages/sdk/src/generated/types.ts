@@ -657,7 +657,7 @@ export interface components {
                         url?: string;
                         /** @description Container image to run for this variant (later phase) */
                         image?: string;
-                        /** @description Command to run (cli targets) */
+                        /** @description Command to run (cli targets, and mcp servers over stdio) */
                         command?: string;
                         /** @default {} */
                         env: {
@@ -1840,7 +1840,7 @@ export interface components {
             url?: string;
             /** @description Container image to run for this variant (later phase) */
             image?: string;
-            /** @description Command to run (cli targets) */
+            /** @description Command to run (cli targets, and mcp servers over stdio) */
             command?: string;
             /** @default {} */
             env: {

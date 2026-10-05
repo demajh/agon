@@ -7,7 +7,10 @@ export type TargetKind = z.infer<typeof TargetKindSchema>;
 export const VariantSpecSchema = z.object({
   url: z.url().optional().describe('Entry URL (web/http/mcp targets)'),
   image: z.string().optional().describe('Container image to run for this variant (later phase)'),
-  command: z.string().optional().describe('Command to run (cli targets)'),
+  command: z
+    .string()
+    .optional()
+    .describe('Command to run (cli targets, and mcp servers over stdio)'),
   env: z.record(z.string(), z.string()).default({}),
   headers: z.record(z.string(), z.string()).default({}),
   description: z.string().optional(),
@@ -65,11 +68,18 @@ export const TargetSchema = z
       ctx.addIssue({ code: 'custom', path: ['variants'], message: 'define at least one variant' });
     }
     for (const [name, v] of Object.entries(t.variants)) {
-      if ((t.kind === 'web' || t.kind === 'http' || t.kind === 'mcp') && !v.url && !v.image) {
+      if ((t.kind === 'web' || t.kind === 'http') && !v.url && !v.image) {
         ctx.addIssue({
           code: 'custom',
           path: ['variants', name],
           message: `${t.kind} variants need a url (or an image to run)`,
+        });
+      }
+      if (t.kind === 'mcp' && !v.url && !v.command && !v.image) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['variants', name],
+          message: 'mcp variants need a url (streamable http) or a command (stdio)',
         });
       }
       if (t.kind === 'cli' && !v.command && !v.image) {

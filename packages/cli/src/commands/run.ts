@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
-import { createWebAdapter } from '@agon/adapters';
+import { createMcpAdapter, createWebAdapter } from '@agon/adapters';
 import { runExperiment } from '@agon/engine';
 import { createExporters } from '@agon/exporters';
 import { LLM_MODES, createLlmClient, type LlmMode, type LlmUsageTotals } from '@agon/llm';
@@ -10,6 +10,7 @@ import {
   newId,
   readAgonConfig,
   type Adapter,
+  type AgonConfig,
   type ExportConfig,
   type LlmClient,
   type Session,
@@ -37,6 +38,23 @@ export interface RunCommandOptions {
 
 type RunLlm = LlmClient & { totals?(): LlmUsageTotals };
 type RunAdapter = Adapter & { dispose?(): Promise<void> };
+
+/** The adapter for a target kind. Chromium launches lazily, so creating the web adapter is cheap. */
+export function createAdapterFor(
+  kind: AgonConfig['target']['kind'],
+  options: { headless: boolean },
+): RunAdapter {
+  switch (kind) {
+    case 'web':
+      return createWebAdapter({ headless: options.headless });
+    case 'mcp':
+      return createMcpAdapter();
+    default:
+      throw new ConfigError(
+        `target kind "${kind}" is not supported yet; web and mcp targets run in this release`,
+      );
+  }
+}
 
 /** Injection points so tests can run the whole command offline. */
 export interface RunCommandDeps {
@@ -101,11 +119,6 @@ export async function runCommand(
   let adapter: RunAdapter | undefined;
   try {
     const config = readAgonConfig(file, { env: options.env ?? process.env });
-    if (config.target.kind !== 'web') {
-      throw new ConfigError(
-        `target kind "${config.target.kind}" is not supported yet; only "web" targets run in this release`,
-      );
-    }
     if (
       options.llmMode !== undefined &&
       !(LLM_MODES as readonly string[]).includes(options.llmMode)
@@ -125,7 +138,7 @@ export async function runCommand(
         ...(options.llmCacheDir === undefined ? {} : { cacheDir: options.llmCacheDir }),
         logger,
       });
-    adapter = deps.adapter ?? createWebAdapter({ headless: !options.headful });
+    adapter = deps.adapter ?? createAdapterFor(config.target.kind, { headless: !options.headful });
     const exporter = createExporters(exportConfigs, { runId, experimentName: config.name, logger });
     const recorder = new CliRecorder(exporter, {
       screenshotDir: join(runDir, 'screenshots'),
@@ -150,7 +163,7 @@ export async function runCommand(
         dryRun: options.dryRun,
         concurrency: options.concurrency,
       },
-      { llm, adapters: { web: adapter }, recorder, logger, cwd: dirname(file) },
+      { llm, adapters: { [adapter.kind]: adapter }, recorder, logger, cwd: dirname(file) },
     );
     const totals = llm.totals?.();
     const summary = summarizeSessions(outcome.sessions);

@@ -1,6 +1,6 @@
-import { createWebAdapter } from '@agon/adapters';
+import { createMcpAdapter, createWebAdapter } from '@agon/adapters';
 import { createLlmClient, type LlmMode } from '@agon/llm';
-import type { Adapter, LlmClient, Result, Run } from '@agon/spec';
+import { ConfigError, type Adapter, type LlmClient, type Result, type Run } from '@agon/spec';
 import {
   allocateSquads,
   analyzeSessions,
@@ -33,18 +33,31 @@ export interface DefaultRunDependenciesOptions {
   headless?: boolean | undefined;
 }
 
-/** Live model client (mode from `AGON_LLM_MODE`) and a fresh Chromium per run. */
+/** Live model client (mode from `AGON_LLM_MODE`) and a fresh adapter per run, chosen by the target kind. */
 export function defaultRunDependencies(
   options: DefaultRunDependenciesOptions = {},
 ): RunDependenciesFactory {
-  return ({ logger }) => {
+  return ({ run, logger }) => {
     const llm = createLlmClient({
       ...(options.llmMode === undefined ? {} : { mode: options.llmMode }),
       ...(options.llmCacheDir === undefined ? {} : { cacheDir: options.llmCacheDir }),
       logger,
     });
-    const adapter = createWebAdapter({ headless: options.headless ?? true });
-    return { llm, adapter, dispose: () => adapter.dispose() };
+    const kind = run.config.target.kind;
+    switch (kind) {
+      case 'web': {
+        const adapter = createWebAdapter({ headless: options.headless ?? true });
+        return { llm, adapter, dispose: () => adapter.dispose() };
+      }
+      case 'mcp': {
+        const adapter = createMcpAdapter();
+        return { llm, adapter, dispose: () => adapter.dispose() };
+      }
+      default:
+        throw new ConfigError(
+          `target kind "${kind}" is not supported yet; web and mcp targets run in this release`,
+        );
+    }
   };
 }
 

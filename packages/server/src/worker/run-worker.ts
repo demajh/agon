@@ -192,7 +192,7 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
       },
       {
         llm: deps.llm,
-        adapters: { web: deps.adapter },
+        adapters: { [deps.adapter.kind]: deps.adapter },
         recorder,
         logger: log,
         cwd: ctx.config.dataDir,

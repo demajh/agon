@@ -51,7 +51,10 @@
                       "type": "string",
                       "description": "Container image to run for this variant (later phase)"
                     },
-                    "command": { "type": "string", "description": "Command to run (cli targets)" },
+                    "command": {
+                      "type": "string",
+                      "description": "Command to run (cli targets, and mcp servers over stdio)"
+                    },
                     "env": {
                       "type": "object",
                       "additionalProperties": { "type": "string" },
@@ -1869,7 +1872,10 @@
             "type": "string",
             "description": "Container image to run for this variant (later phase)"
           },
-          "command": { "type": "string", "description": "Command to run (cli targets)" },
+          "command": {
+            "type": "string",
+            "description": "Command to run (cli targets, and mcp servers over stdio)"
+          },
           "env": { "type": "object", "additionalProperties": { "type": "string" }, "default": {} },
           "headers": {
             "type": "object",

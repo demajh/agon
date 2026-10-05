@@ -31,3 +31,36 @@ export {
   type ScriptedAnalyticsPayload,
 } from './web/unload-guard.js';
 export { ANALYTICS_BINDING } from './web/session.js';
+export {
+  createMcpAdapter,
+  DEFAULT_CALL_TIMEOUT_MS,
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_MAX_RESULT_CHARS,
+  MCP_CLIENT_INFO,
+} from './mcp/adapter.js';
+export type { McpAdapter, McpAdapterOptions, McpConnect } from './mcp/adapter.js';
+export { DEFAULT_MCP_MAX_INTERACTIVE, DEFAULT_MCP_MAX_TEXT_CHARS } from './mcp/session.js';
+export {
+  DEFAULT_MAX_DESCRIPTION_CHARS,
+  DEFAULT_MAX_SCHEMA_CHARS,
+  catalogHash,
+  catalogInteractive,
+  compactSchema,
+  renderCallToolResult,
+  renderGetPromptResult,
+  renderObservationText,
+  renderPromptCatalog,
+  renderReadResourceResult,
+  renderResourceCatalog,
+  renderToolCatalog,
+} from './mcp/catalog.js';
+export type {
+  McpCatalog,
+  McpLastCall,
+  McpPromptArgument,
+  McpPromptEntry,
+  McpResourceEntry,
+  McpToolEntry,
+  RenderCatalogOptions,
+} from './mcp/catalog.js';
+export { formatCommand, parseCommand } from './mcp/command.js';

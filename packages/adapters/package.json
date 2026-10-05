@@ -1,7 +1,7 @@
 {
   "name": "@agon/adapters",
   "version": "0.0.1",
-  "description": "Agon target adapters: web (Playwright), later http, cli, mcp.",
+  "description": "Agon target adapters: web (Playwright) and mcp (Model Context Protocol client); later http, cli.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,11 +23,13 @@
   },
   "dependencies": {
     "@agon/spec": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "playwright": "^1.63.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -1,7 +1,9 @@
 import { Command } from 'commander';
 import { personasListCommand, personasShowCommand } from './commands/personas.js';
 import { planCommand } from './commands/plan.js';
+import { runCommand } from './commands/run.js';
 import { schemaCommand } from './commands/schema.js';
+import { traceCommand } from './commands/trace.js';
 import { validateCommand } from './commands/validate.js';
 import { Output } from './output.js';
 
@@ -49,6 +51,71 @@ export function createProgram(deps: ProgramDeps = {}): Command {
       exit(
         planCommand(output(), { file, variants: opts.variant, seed: opts.seed, size: opts.size }),
       );
+    });
+
+  program
+    .command('run')
+    .description('Run an experiment: simulate the population against every variant and record it')
+    .argument('[file]', 'path to agon.yaml', 'agon.yaml')
+    .option('-v, --variant <name...>', 'only these variants')
+    .option('-s, --seed <n>', 'override population.seed', (v) => Number.parseInt(v, 10))
+    .option('-n, --size <n>', 'override population.size', (v) => Number.parseInt(v, 10))
+    .option('-m, --model <ref>', 'override defaults.model, e.g. anthropic/claude-sonnet-5-5')
+    .option(
+      '-c, --concurrency <n>',
+      'sessions in parallel (default defaults.maxConcurrency)',
+      (v) => Number.parseInt(v, 10),
+    )
+    .option('-o, --out <dir>', 'output directory (default ./agon-out or $AGON_OUT_DIR)')
+    .option('--llm-mode <mode>', 'live | record | replay | off (default $AGON_LLM_MODE or live)')
+    .option('--llm-cache <dir>', 'record/replay cache directory (default .agon/llm-cache)')
+    .option('--headful', 'show the browser while it runs', false)
+    .option('--dry-run', 'plan the sessions and write the run record without executing', false)
+    .option('--log-level <level>', 'diagnostics level on stderr (default warn)')
+    .action(
+      async (
+        file: string,
+        opts: {
+          variant?: string[];
+          seed?: number;
+          size?: number;
+          model?: string;
+          concurrency?: number;
+          out?: string;
+          llmMode?: string;
+          llmCache?: string;
+          headful: boolean;
+          dryRun: boolean;
+          logLevel?: string;
+        },
+      ) => {
+        exit(
+          await runCommand(output(), {
+            file,
+            variants: opts.variant,
+            seed: opts.seed,
+            size: opts.size,
+            model: opts.model,
+            concurrency: opts.concurrency,
+            out: opts.out,
+            llmMode: opts.llmMode,
+            llmCacheDir: opts.llmCache,
+            headful: opts.headful,
+            dryRun: opts.dryRun,
+            logLevel: opts.logLevel,
+          }),
+        );
+      },
+    );
+
+  program
+    .command('trace')
+    .description('Inspect a recorded run: list its sessions, or replay one step by step')
+    .argument('<dir>', 'run directory (…/agon-out/<runId>) or an output directory (newest run)')
+    .argument('[session]', 'session id, id suffix, or index')
+    .option('--limit <n>', 'sessions to list', (v) => Number.parseInt(v, 10))
+    .action((dir: string, session: string | undefined, opts: { limit?: number }) => {
+      exit(traceCommand(output(), { dir, sessionId: session, limit: opts.limit }));
     });
 
   const personas = program.command('personas').description('Browse the built-in persona library');

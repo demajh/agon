@@ -66,7 +66,11 @@ export interface LlmRequestBase {
   messages: LlmMessage[];
   temperature?: number;
   maxOutputTokens?: number;
-  /** Stable key for the record/replay cache; omit to bypass caching. */
+  /**
+   * Extra discriminator mixed into the record/replay cache key. In record and replay modes the
+   * cache covers every request (keyed on model, prompts, schema and sampling parameters); this
+   * field lets callers separate requests that would otherwise look identical.
+   */
   cacheKey?: string;
   purpose?: LlmPurpose;
 }

@@ -8,6 +8,7 @@ export const ErrorCodes = {
   BUDGET_EXCEEDED: 'budget_exceeded',
   ADAPTER: 'adapter_error',
   LLM: 'llm_error',
+  EXPORT: 'export_error',
   INTERNAL: 'internal_error',
 } as const;
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

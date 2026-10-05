@@ -177,7 +177,7 @@ describe('PostHogExporter', () => {
       const exportError = error as ExportError;
       expect(exportError.failures[0]?.exporter).toBe('posthog');
       expect(exportError.failures[0]?.operation).toBe('flush');
-      expect(exportError.toJSON().error.code).toBe('internal_error');
+      expect(exportError.toJSON().error.code).toBe('export_error');
     }
   });
 });

@@ -83,7 +83,7 @@ export interface ExportFailure {
 /** A single sink operation that failed, e.g. an HTTP error from an analytics backend. */
 export class SinkError extends AgonError {
   constructor(message: string, details?: unknown, cause?: unknown) {
-    super(ErrorCodes.INTERNAL, message, { status: 502, details, cause });
+    super(ErrorCodes.EXPORT, message, { status: 502, details, cause });
     this.name = 'SinkError';
   }
 }
@@ -93,7 +93,7 @@ export class ExportError extends AgonError {
   readonly failures: readonly ExportFailure[];
 
   constructor(message: string, failures: readonly ExportFailure[]) {
-    super(ErrorCodes.INTERNAL, message, {
+    super(ErrorCodes.EXPORT, message, {
       status: 502,
       details: {
         failures: failures.map(({ exporter, operation, message: failureMessage, at }) => ({

@@ -24,7 +24,9 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
+    # Optional until an S3 sink exists: `docker compose --profile storage up -d`.
+    profiles: ['storage']
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: agon

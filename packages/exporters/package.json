@@ -12,7 +12,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "hyparquet": "^1.31.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

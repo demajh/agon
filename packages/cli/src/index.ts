@@ -13,3 +13,4 @@ export {
 } from './commands/run.js';
 export { traceCommand, resolveRunDir, type TraceOptions } from './commands/trace.js';
 export { CliRecorder, type CliRecorderOptions } from './recorder.js';
+export { compareCommand, printResult, type CompareOptions } from './commands/compare.js';

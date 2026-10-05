@@ -207,7 +207,7 @@ export async function runCommand(
       }
       for (const message of exportErrors) out.warn(`export: ${message}`);
       out.text(`  output: ${runDir}`);
-      out.text(out.dim(`  next: agon trace ${runDir}`));
+      out.text(out.dim(`  next: agon compare ${runDir}   ·   agon trace ${runDir}`));
     }
     return outcome.run.status === 'completed' ? 0 : 1;
   } catch (error) {

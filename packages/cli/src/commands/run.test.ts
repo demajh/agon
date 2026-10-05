@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { FakeAdapter, FakeLlm, happyUser, ledgerlySite } from '@agon/engine/fakes';
 import { describe, expect, it } from 'vitest';
 import { Output } from '../output.js';
+import { compareCommand } from './compare.js';
 import { runCommand } from './run.js';
 import { traceCommand } from './trace.js';
 
@@ -98,7 +99,21 @@ describe('agon run + agon trace', () => {
     const missing = capture();
     expect(traceCommand(missing.out, { dir: runDir, sessionId: 'nope' })).toBe(1);
     expect(missing.text()).toMatch(/no session "nope"/);
-  });
+
+    if (process.env['AGON_SKIP_STATS_TESTS'] !== '1') {
+      const cmp = capture();
+      expect(await compareCommand(cmp.out, { dir: outDir, minSessions: 1 })).toBe(0);
+      expect(existsSync(join(runDir, 'result.json'))).toBe(true);
+      expect(cmp.text()).toMatch(/verdict: (SHIP|KILL|CONTINUE|INCONCLUSIVE)/);
+      expect(cmp.text()).toContain('activation*');
+      expect(cmp.text()).toContain('calibration: uncalibrated-v0');
+      const asJson = capture(true);
+      expect(await compareCommand(asJson.out, { dir: runDir })).toBe(0);
+      expect((JSON.parse(asJson.text()) as { result: { runId: string } }).result.runId).toMatch(
+        /^run_/,
+      );
+    }
+  }, 120_000);
 
   it('dry runs write only the run record', async () => {
     const { file, outDir } = setup();

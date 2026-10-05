@@ -37,6 +37,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --project packages/stats
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:deps
       - run: pnpm build

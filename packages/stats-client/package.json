@@ -1,7 +1,7 @@
 {
-  "name": "@agon/cli",
+  "name": "@agon/stats-client",
   "version": "0.0.1",
-  "description": "The agon command: validate, run, compare, trace, export.",
+  "description": "TypeScript client for the agon-stats subprocess: builds the analysis config, runs analyze/allocate, validates the Result.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,34 +15,19 @@
   "files": [
     "dist"
   ],
-  "bin": {
-    "agon": "./dist/bin.js"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "clean": "rm -rf dist",
-    "dev": "tsx src/bin.ts"
+    "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agon/adapters": "workspace:*",
-    "@agon/engine": "workspace:*",
-    "@agon/exporters": "workspace:*",
-    "@agon/llm": "workspace:*",
-    "@agon/sdk": "workspace:*",
     "@agon/spec": "workspace:*",
-    "@agon/stats-client": "workspace:*",
-    "commander": "^15.0.0",
-    "picocolors": "^1.1.1",
-    "pino": "catalog:",
-    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "tsx": "catalog:"
+    "vitest": "catalog:"
   }
 }

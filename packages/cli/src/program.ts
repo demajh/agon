@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { personasListCommand, personasShowCommand } from './commands/personas.js';
+import { compareCommand } from './commands/compare.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
 import { schemaCommand } from './commands/schema.js';
@@ -103,6 +104,49 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             headful: opts.headful,
             dryRun: opts.dryRun,
             logLevel: opts.logLevel,
+          }),
+        );
+      },
+    );
+
+  program
+    .command('compare')
+    .description('Analyze a recorded run with agon-stats and write result.json next to it')
+    .argument('<dir>', 'run directory (…/agon-out/<runId>) or an output directory (newest run)')
+    .option('--method <method>', 'bayesian | sequential | fixed (default from the config)')
+    .option('--control <variant>', 'baseline variant (default from the config)')
+    .option('--min-sessions <n>', 'override analysis.minSessionsPerVariant', (v) =>
+      Number.parseInt(v, 10),
+    )
+    .option('--profile <name>', 'calibration profile (default from the config)')
+    .option(
+      '--category <name>',
+      'change category for the calibration note, e.g. copy, layout, flow, pricing',
+    )
+    .option('--seed <n>', 'Monte Carlo / bootstrap seed (default the run seed)', (v) =>
+      Number.parseInt(v, 10),
+    )
+    .action(
+      async (
+        dir: string,
+        opts: {
+          method?: 'bayesian' | 'sequential' | 'fixed';
+          control?: string;
+          minSessions?: number;
+          profile?: string;
+          category?: string;
+          seed?: number;
+        },
+      ) => {
+        exit(
+          await compareCommand(output(), {
+            dir,
+            method: opts.method,
+            control: opts.control,
+            minSessions: opts.minSessions,
+            profile: opts.profile,
+            category: opts.category,
+            seed: opts.seed,
           }),
         );
       },

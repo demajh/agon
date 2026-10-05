@@ -15,7 +15,8 @@ function typeOf(node) {
   if (node.anyOf) return node.anyOf.map(typeOf).join(' or ');
   if (node.oneOf) return 'one of the variants below';
   if (node.type === 'array') return `array of ${typeOf(node.items) || 'items'}`;
-  if (node.type === 'object' && node.additionalProperties) return `map of ${typeOf(node.additionalProperties)}`;
+  if (node.type === 'object' && node.additionalProperties)
+    return `map of ${typeOf(node.additionalProperties)}`;
   if (node.type === 'object') return 'object';
   if (node.format === 'uri') return 'url';
   if (node.pattern) return `${node.type} matching \`${node.pattern}\``;
@@ -34,12 +35,16 @@ function walk(path, node, title) {
     const desc = (prop.description ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
     return `| \`${name}\` | ${typeOf(prop)} | ${req} | ${def} | ${desc} |`;
   });
-  sections.push(`## ${title}\n\n| field | type | required | default | description |\n|---|---|---|---|---|\n${rows.join('\n')}\n`);
+  sections.push(
+    `## ${title}\n\n| field | type | required | default | description |\n|---|---|---|---|---|\n${rows.join('\n')}\n`,
+  );
   for (const [name, prop] of Object.entries(node.properties)) {
     const childPath = path ? `${path}.${name}` : name;
     if (prop.type === 'object' && prop.properties) walk(childPath, prop, `\`${childPath}\``);
-    else if (prop.type === 'object' && prop.additionalProperties?.type === 'object') walk(`${childPath}.<key>`, prop.additionalProperties, `\`${childPath}.<key>\``);
-    else if (prop.type === 'array' && prop.items?.type === 'object' && prop.items.properties) walk(`${childPath}[]`, prop.items, `\`${childPath}[]\``);
+    else if (prop.type === 'object' && prop.additionalProperties?.type === 'object')
+      walk(`${childPath}.<key>`, prop.additionalProperties, `\`${childPath}.<key>\``);
+    else if (prop.type === 'array' && prop.items?.type === 'object' && prop.items.properties)
+      walk(`${childPath}[]`, prop.items, `\`${childPath}[]\``);
     else if (prop.type === 'array' && prop.items?.oneOf) {
       prop.items.oneOf.forEach((variant) => {
         const tag = variant.properties?.type?.const ?? variant.properties?.kind?.const;
@@ -60,5 +65,8 @@ Strings may contain \`\${ENV_VAR}\` or \`\${ENV_VAR:-default}\`; missing variabl
 \`scenarios[].success\` accepts the shorthand strings \`event:<name>\`, \`url:<pattern>\`, \`text:<needle>\` or \`judge\`, or the object form documented below.
 `;
 
-writeFileSync(new URL('../docs/agon-yaml.md', import.meta.url), `${header}\n${sections.join('\n')}`);
+writeFileSync(
+  new URL('../docs/agon-yaml.md', import.meta.url),
+  `${header}\n${sections.join('\n')}`,
+);
 console.log(`docs/agon-yaml.md: ${sections.length} sections`);

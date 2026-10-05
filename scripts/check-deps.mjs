@@ -10,6 +10,7 @@ const ALLOW = {
   '@agon/llm': ['@agon/spec'],
   '@agon/adapters': ['@agon/spec'],
   '@agon/exporters': ['@agon/spec'],
+  '@agon/stats-client': ['@agon/spec'],
   '@agon/engine': ['@agon/spec', '@agon/llm', '@agon/adapters'],
   '@agon/sdk': [],
   '@agon/server': [
@@ -19,10 +20,19 @@ const ALLOW = {
     '@agon/adapters',
     '@agon/engine',
     '@agon/exporters',
+    '@agon/stats-client',
     '@agon/integrations',
   ],
   '@agon/integrations': ['@agon/spec'],
-  '@agon/cli': ['@agon/spec', '@agon/llm', '@agon/adapters', '@agon/engine', '@agon/exporters', '@agon/sdk'],
+  '@agon/cli': [
+    '@agon/spec',
+    '@agon/llm',
+    '@agon/adapters',
+    '@agon/engine',
+    '@agon/exporters',
+    '@agon/stats-client',
+    '@agon/sdk',
+  ],
   '@agon/ui': ['@agon/sdk'],
   '@agon/demo-app': [],
 };
@@ -39,14 +49,22 @@ for (const root of roots) {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const allowed = ALLOW[pkg.name];
     if (!allowed) {
-      problems.push(`${pkgPath}: package "${pkg.name}" is not registered in scripts/check-deps.mjs`);
+      problems.push(
+        `${pkgPath}: package "${pkg.name}" is not registered in scripts/check-deps.mjs`,
+      );
       continue;
     }
     checked++;
-    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies });
+    const deps = Object.keys({
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.peerDependencies,
+    });
     for (const dep of deps) {
       if (dep.startsWith('@agon/') && !allowed.includes(dep)) {
-        problems.push(`${pkgPath}: "${pkg.name}" may not depend on "${dep}" (allowed: ${allowed.join(', ') || 'none'})`);
+        problems.push(
+          `${pkgPath}: "${pkg.name}" may not depend on "${dep}" (allowed: ${allowed.join(', ') || 'none'})`,
+        );
       }
     }
   }

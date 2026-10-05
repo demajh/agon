@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: typescript
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agon
+          POSTGRES_PASSWORD: agon
+          POSTGRES_DB: agon
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U agon -d agon"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://agon:agon@localhost:5432/agon
+      AGON_LLM_MODE: replay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:deps
+      - run: pnpm build
+      - run: pnpm typecheck
+      - name: Install Playwright browsers
+        run: pnpm -F @agon/adapters exec playwright install --with-deps chromium
+        if: hashFiles('packages/adapters/package.json') != ''
+      - run: pnpm test
+
+  python:
+    name: stats
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: hashFiles('packages/stats/pyproject.toml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --project packages/stats
+      - run: uv run --project packages/stats pytest

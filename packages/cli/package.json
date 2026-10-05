@@ -1,0 +1,45 @@
+{
+  "name": "@agon/cli",
+  "version": "0.0.1",
+  "description": "The agon command: validate, run, compare, trace, export.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "bin": {
+    "agon": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist",
+    "dev": "tsx src/bin.ts"
+  },
+  "dependencies": {
+    "@agon/adapters": "workspace:*",
+    "@agon/engine": "workspace:*",
+    "@agon/exporters": "workspace:*",
+    "@agon/llm": "workspace:*",
+    "@agon/sdk": "workspace:*",
+    "@agon/spec": "workspace:*",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1",
+    "pino": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "tsx": "catalog:"
+  }
+}

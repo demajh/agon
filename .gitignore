@@ -1,0 +1,33 @@
+# dependencies & build output
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# environment & secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# runtime output
+agon-out/
+playwright-report/
+test-results/
+*.log
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# git worktrees used by parallel agents
+.worktrees/

@@ -1,0 +1,31 @@
+{
+  "name": "agon",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Simulated-user A/B testing and agentic-squad governance for AI-generated software.",
+  "license": "Apache-2.0",
+  "repository": "github:demajh/agon",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "dev": "turbo run dev",
+    "check:deps": "node scripts/check-deps.mjs",
+    "generate": "pnpm -F @agon/server run export-openapi && pnpm -F @agon/sdk run generate",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.7",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

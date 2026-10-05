@@ -1,0 +1,36 @@
+{
+  "name": "@agon/engine",
+  "version": "0.0.1",
+  "description": "Agon simulation engine: orchestrator, session loop, personas, simulated-user agent, judge.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agon/adapters": "workspace:*",
+    "@agon/llm": "workspace:*",
+    "@agon/spec": "workspace:*",
+    "pino": "catalog:",
+    "pure-rand": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

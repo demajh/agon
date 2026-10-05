@@ -119,6 +119,30 @@ const ANALYTICS = page(
 </script>`,
 );
 
+const BEACON = page(
+  'Beacon',
+  `<main><h1>Beacon</h1><p id="status">sending beacon</p><a href="/welcome">Leave</a></main>
+<script>
+  navigator.sendBeacon('/e/?beacon=1', JSON.stringify([{ event: 'beacon_event', properties: { distinct_id: 'user-9' } }]));
+  document.getElementById('status').textContent = 'beacon sent';
+  addEventListener('pagehide', () => {
+    fetch('/capture/', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(btoa(JSON.stringify([{ event: 'unload_event', properties: {} }]))),
+    });
+  });
+</script>`,
+);
+
+const OFFSCREEN = page(
+  'Offscreen',
+  `<style>.skip-link{position:absolute;left:-999px;top:auto}.skip-link:focus{left:8px}</style>
+<a class="skip-link" href="#main">Skip to main content</a>
+<main id="main"><h1>Offscreen</h1><button id="real">Real button</button></main>`,
+);
+
 const MANY = page(
   'Many buttons',
   `<main><h1>Many buttons</h1>
@@ -175,6 +199,8 @@ const PAGES: Readonly<Record<string, string>> = {
   '/welcome': WELCOME,
   '/errors': ERRORS,
   '/analytics': ANALYTICS,
+  '/beacon': BEACON,
+  '/offscreen': OFFSCREEN,
   '/many': MANY,
   '/controls': CONTROLS,
   '/viewport': VIEWPORT,

@@ -147,6 +147,13 @@ describe('observe', () => {
     expect(names).not.toContain('csrf');
   });
 
+  it('ignores controls parked off-canvas, such as unfocused skip links', async () => {
+    const session = await open('/offscreen');
+    const obs = await session.observe();
+    expect(obs.interactive.map((e) => e.name)).toEqual(['Real button']);
+    await session.close();
+  });
+
   it('caps interactive elements and text, keeping document order', async () => {
     const session = await open('/many');
     const obs = await session.observe();
@@ -411,6 +418,24 @@ describe('capture', () => {
 
     expect(server.hitCount('/e/')).toBe(eBefore);
     expect(server.hitCount('/capture/')).toBe(captureBefore);
+  });
+
+  it('blocks beacons and unload-time keepalive calls that would bypass routing', async () => {
+    const eBefore = server.hitCount('/e/');
+    const captureBefore = server.hitCount('/capture/');
+    const session = await open('/beacon', { capture: { analytics: ['posthog'] } });
+    const obs = await observeUntil(session, (o) => o.text.includes('beacon sent'));
+    const beacon = session.drainEvents().find((e) => e.event === 'beacon_event');
+    expect(beacon?.source).toBe('intercepted');
+    expect(beacon?.properties).toMatchObject({ distinct_id: 'user-9' });
+    expect(server.hitCount('/e/')).toBe(eBefore);
+
+    const leave = byName(obs, 'Leave');
+    const result = await session.act({ type: 'click', ref: leave.ref });
+    expect(result.navigated).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(server.hitCount('/capture/')).toBe(captureBefore);
+    await session.close();
   });
 
   it('forwards analytics calls when forwardAnalytics is true, still capturing them', async () => {

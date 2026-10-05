@@ -293,7 +293,7 @@ export function parsePrompt(message: string): ParsedPrompt {
   }
   const refs = new Map<string, { role: string; name: string; value?: string }>();
   for (const m of message.matchAll(
-    /^\[(e\d+)\] (\w+)(?: "([^"]*)")?(?: \((empty)|value: "([^"]*)"\))?/gm,
+    /^\[(e\d+)\] (\w+)(?: "([^"]*)")?(?: \((empty)\)| \(value: "([^"]*)"\))?/gm,
   )) {
     const [, ref, role, name, empty, value] = m;
     refs.set(ref as string, {

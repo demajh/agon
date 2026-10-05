@@ -50,6 +50,19 @@ describe('patience model', () => {
     ).toBe(0);
   });
 
+  it('drains sharply when the same action fails twice in a row', () => {
+    const base = {
+      traits: traits(0.5),
+      progress: 'none' as const,
+      feeling: 'confused' as const,
+      errors: 0,
+      actionOk: false,
+    };
+    const once = updatePatience(0.8, base);
+    const twice = updatePatience(0.8, { ...base, repeatedFailure: true });
+    expect(twice).toBeLessThan(once - 0.1);
+  });
+
   it('abandons with certainty at zero, never above the threshold, stochastically in between', () => {
     const rng = createRng(1);
     expect(shouldAbandon(0, rng)).toBe(true);

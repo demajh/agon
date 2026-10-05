@@ -21,6 +21,8 @@ export interface PatienceParams {
   error: number;
   /** Recovery when the user feels they made progress. */
   recover: number;
+  /** Extra drain when the same action has just failed twice in a row (the user is stuck). */
+  repeatedFailure: number;
   /** Below this remaining patience, abandonment becomes stochastic. */
   abandonBelow: number;
   /** Maximum per-step abandonment probability as patience approaches zero. */
@@ -36,6 +38,7 @@ export const DEFAULT_PATIENCE: PatienceParams = {
   frustrated: 0.08,
   error: 0.05,
   recover: 0.03,
+  repeatedFailure: 0.25,
   abandonBelow: 0.25,
   abandonSlope: 0.8,
 };
@@ -54,6 +57,8 @@ export interface PatienceInput {
   /** Errors visible on the page at this step. */
   errors: number;
   actionOk: boolean;
+  /** The same action failed on the previous step too. */
+  repeatedFailure?: boolean | undefined;
 }
 
 export function updatePatience(
@@ -77,6 +82,7 @@ export function updatePatience(
   if (input.feeling === 'confused') delta -= params.confused * impatience;
   if (input.feeling === 'frustrated') delta -= params.frustrated * impatience;
   if (!input.actionOk) delta -= params.error * impatience;
+  if (!input.actionOk && input.repeatedFailure) delta -= params.repeatedFailure * impatience;
   delta -= Math.min(input.errors, 3) * params.error * impatience * 0.5;
   return clamp01(current + delta);
 }

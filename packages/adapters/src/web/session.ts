@@ -27,7 +27,12 @@ import {
   resolveNavigationUrl,
   shortErrorMessage,
 } from './actions.js';
-import { matchAnalyticsProvider, parseAnalyticsRequest } from './analytics.js';
+import {
+  analyticsPatternSources,
+  matchAnalyticsProvider,
+  parseAnalyticsRequest,
+} from './analytics.js';
+import { unloadGuard } from './unload-guard.js';
 import { DEFAULT_MAX_INTERACTIVE, DEFAULT_MAX_TEXT_CHARS, buildObservation } from './observe.js';
 import { collectPageState } from './page-script.js';
 import type { PageScriptOptions, PageScriptResult } from './page-script.js';
@@ -133,6 +138,11 @@ export class WebSession implements AdapterSession {
     const page = await options.context.newPage();
     const session = new WebSession(page, options);
     session.attachListeners();
+    if (session.capture.analytics.length > 0) {
+      await page.addInitScript(unloadGuard, {
+        patterns: analyticsPatternSources(session.capture.analytics),
+      });
+    }
     await session.installAnalyticsRoutes();
     await page.goto(options.startUrl, {
       waitUntil: 'load',
@@ -280,7 +290,17 @@ export class WebSession implements AdapterSession {
     const resolved = await this.resolve(ref);
     if ('error' in resolved) return resolved.error;
     if (resolved.info.disabled) return `${ref} is disabled`;
-    await resolved.locator.click({ timeout: this.actionTimeoutMs });
+    try {
+      await resolved.locator.click({ timeout: this.actionTimeoutMs });
+    } catch (error) {
+      this.rethrowIfGone(error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/outside of the viewport|not visible|intercepts pointer events/i.test(message))
+        throw error;
+      // The element exists but cannot be reached with a real pointer; a DOM click is what a user
+      // tabbing to it with the keyboard would get.
+      await resolved.locator.dispatchEvent('click', undefined, { timeout: this.actionTimeoutMs });
+    }
     await this.settle();
     return undefined;
   }

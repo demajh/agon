@@ -143,6 +143,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   const history: string[] = [];
   let lastAction: Action | undefined;
   let lastResult: ActResult | undefined;
+  let lastFailedActionKey: string | undefined;
   let lastObservation: Observation | undefined;
   let outcome: SessionOutcome | undefined;
   let outcomeReason: string | undefined;
@@ -260,6 +261,9 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       }
       await emit(adapterSession.drainEvents());
 
+      const actionKey = JSON.stringify(action);
+      const repeatedFailure = !result.ok && lastFailedActionKey === actionKey;
+      lastFailedActionKey = result.ok ? undefined : actionKey;
       patience = updatePatience(
         patience,
         {
@@ -268,6 +272,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
           feeling: decision.feeling,
           errors: observation.errors.length,
           actionOk: result.ok,
+          repeatedFailure,
         },
         patienceParams,
       );
@@ -292,7 +297,10 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         adapterSession,
       );
       await deps.recorder.step(step, screenshot);
-      history.push(summarizeStep(stepIndex, decision, result));
+      history.push(
+        summarizeStep(stepIndex, decision, result) +
+          (repeatedFailure ? ' (the same thing failed twice; this is not working)' : ''),
+      );
       lastAction = action;
       lastResult = result;
 

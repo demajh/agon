@@ -148,7 +148,10 @@ export function collectPageState(opts: PageScriptOptions): PageScriptResult {
       return false;
     }
     const rect = el.getBoundingClientRect();
-    return rect.width > 0 || rect.height > 0;
+    if (rect.width <= 0 && rect.height <= 0) return false;
+    // Parked off-canvas (e.g. skip links at left:-999px until focused): never scrollable into view.
+    if (rect.right <= 0 || rect.bottom <= 0) return false;
+    return true;
   };
 
   /** Text of a label-like node without the text the control itself renders (e.g. a select's option). */

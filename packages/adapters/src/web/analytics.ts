@@ -13,6 +13,13 @@ export const ANALYTICS_ROUTE_PATTERNS: Readonly<Record<AnalyticsProvider, readon
   ga: ['**/g/collect**', '**/collect**'],
 };
 
+/** RegExp sources for the enabled providers' URL patterns, for scripts injected into the page. */
+export function analyticsPatternSources(providers: readonly AnalyticsProvider[]): string[] {
+  return providers.flatMap((p) =>
+    ANALYTICS_ROUTE_PATTERNS[p].map((glob) => urlGlobToRegExp(glob).source),
+  );
+}
+
 /** Emitted when an intercepted body could not be decoded; carries the body length instead. */
 export const RAW_ANALYTICS_EVENT = '$agon_analytics_raw';
 

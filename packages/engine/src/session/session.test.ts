@@ -285,6 +285,36 @@ describe('runSession', () => {
   });
 });
 
+describe('fakes', () => {
+  it('parsePrompt reads refs, names, empty markers and filled values', async () => {
+    const { parsePrompt } = await import('../fakes/fakes.js');
+    const parsed = parsePrompt(
+      'URL: http://x.test/signup\n[e1] textbox "Email" (value: "a@b.c")\n[e2] textbox "Password" (empty)\n[e3] button "Go"',
+    );
+    expect(parsed.path).toBe('/signup');
+    expect(parsed.refs.get('e1')).toEqual({ role: 'textbox', name: 'Email', value: 'a@b.c' });
+    expect(parsed.refs.get('e2')).toEqual({ role: 'textbox', name: 'Password', value: '' });
+    expect(parsed.refs.get('e3')).toEqual({ role: 'button', name: 'Go' });
+  });
+
+  it('a user stuck on a failing action gives up well before the step limit', async () => {
+    let n = 0;
+    const stuck: UserPolicy = () => ({
+      perception: 'A button.',
+      thinking: 'Try again.',
+      feeling: 'confused',
+      progress: 'none',
+      action: { type: 'click', ref: `e${++n > 0 ? 999 : 1}` },
+    });
+    const { run } = setup(stuck, {
+      scenarios: [{ id: 's', goal: 'g', success: 'event:project_created', maxSteps: 40 }],
+    });
+    const { session } = await run();
+    expect(session.outcome).toBe('gave_up');
+    expect(session.steps).toBeLessThan(10);
+  });
+});
+
 describe('success criteria and metrics', () => {
   it('matches urls by substring and glob', () => {
     expect(urlMatches('http://x.test/app?x=1', '/app')).toBe(true);

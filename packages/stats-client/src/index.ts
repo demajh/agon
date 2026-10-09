@@ -17,3 +17,4 @@ export {
   type StatsRunOptions,
   type SquadScoreInput,
 } from './analyze.js';
+export { liveWindowGate, type LiveWindowGateInput } from './live-window.js';

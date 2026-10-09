@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { personasListCommand, personasShowCommand } from './commands/personas.js';
 import { compareCommand } from './commands/compare.js';
+import { liveWindowCommand } from './commands/live-window.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
 import { ledgerCommand } from './commands/ledger.js';
@@ -203,6 +204,48 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .action((dir: string) => {
       exit(stallReportCommand(output(), { dir }));
     });
+
+  const int = (v: string) => Number.parseInt(v, 10);
+  program
+    .command('live-window')
+    .description(
+      'Transition-matrix gate over a live window: did a transition improbable before the release become the most likely successor of its state (exit 0 passed, 2 fired, 3 too little data)',
+    )
+    .requiredOption(
+      '--baseline <file>',
+      'pre-release window JSON (LiveWindow), same capacity and grain',
+    )
+    .requiredOption('--live <file>', 'live window JSON (LiveWindow) recorded after the release')
+    .option('--buckets <file>', 'declared bucket edges JSON (default: baseline quantiles)')
+    .option('--percentile <p>', 'baseline bootstrap percentile to exceed (default 95)', Number)
+    .option(
+      '--min-transitions <n>',
+      'live transitions a state needs before it can fire (default 20)',
+      int,
+    )
+    .option(
+      '--decompose-above <share>',
+      'refine coarse states above this share of transitions (default 0.25)',
+      Number,
+    )
+    .option('--bootstrap-samples <n>', 'bootstrap replicates per window (default 1000)', int)
+    .option('--seed <n>', 'bootstrap seed (default 0)', int)
+    .option('-o, --out <file>', 'also write the report here')
+    .action(
+      async (opts: {
+        baseline: string;
+        live: string;
+        buckets?: string;
+        percentile?: number;
+        minTransitions?: number;
+        decomposeAbove?: number;
+        bootstrapSamples?: number;
+        seed?: number;
+        out?: string;
+      }) => {
+        exit(await liveWindowCommand(output(), opts));
+      },
+    );
 
   const personas = program.command('personas').description('Browse the built-in persona library');
   personas

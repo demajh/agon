@@ -122,7 +122,7 @@ function toAgonError(stderr: string, fallback: string): AgonError {
   );
 }
 
-function safeJson(text: string): unknown {
+export function safeJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
@@ -130,7 +130,7 @@ function safeJson(text: string): unknown {
   }
 }
 
-async function runStats(args: string[], options: StatsRunOptions): Promise<string> {
+export async function runStats(args: string[], options: StatsRunOptions): Promise<string> {
   const binary = options.binary ?? resolveStatsBinary({ env: options.env });
   try {
     const { stdout } = await execFileAsync(binary.command, [...binary.args, ...args], {

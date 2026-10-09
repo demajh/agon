@@ -68,6 +68,11 @@ export function createProgram(deps: ProgramDeps = {}): Command {
       'sessions in parallel (default defaults.maxConcurrency)',
       (v) => Number.parseInt(v, 10),
     )
+    .option(
+      '--time-cap-ms <n>',
+      'wall-clock cap for the whole run in ms (default defaults.timeCapMs, 720000); exit code 3 when reached',
+      (v) => Number.parseInt(v, 10),
+    )
     .option('-o, --out <dir>', 'output directory (default ./agon-out or $AGON_OUT_DIR)')
     .option('--llm-mode <mode>', 'live | record | replay | off (default $AGON_LLM_MODE or live)')
     .option('--llm-cache <dir>', 'record/replay cache directory (default .agon/llm-cache)')
@@ -83,6 +88,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
           size?: number;
           model?: string;
           concurrency?: number;
+          timeCapMs?: number;
           out?: string;
           llmMode?: string;
           llmCache?: string;
@@ -99,6 +105,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             size: opts.size,
             model: opts.model,
             concurrency: opts.concurrency,
+            timeCapMs: opts.timeCapMs,
             out: opts.out,
             llmMode: opts.llmMode,
             llmCacheDir: opts.llmCache,

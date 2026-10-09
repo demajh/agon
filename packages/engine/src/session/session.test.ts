@@ -18,7 +18,7 @@ import {
 } from '../fakes/fakes.js';
 import { perceptionLimitsFor } from '../agent/perception.js';
 import { computeSessionMetrics } from './metrics.js';
-import { runSession } from './runner.js';
+import { TIME_CAP_STOP_REASON, runSession } from './runner.js';
 import { criterionMet, urlMatches } from './success.js';
 
 const logger = pino({ level: 'silent' });
@@ -596,5 +596,78 @@ describe('stall detection', () => {
     expect(byEvents.session.outcome).toBe('max_steps');
     expect(byEvents.session.progressSteps).toEqual([1, 2, 3, 4, 5]);
     expect(byEvents.session.lastProgressStep).toBe(5);
+  });
+});
+
+describe('run time cap', () => {
+  it('interrupts a session without an outcome when the signal carries the time-cap reason', async () => {
+    const config = testConfig();
+    const personas = resolvePersonas(config);
+    const [plan] = planSessions(config, personas, {
+      runId: 'run_cap',
+      variants: ['control'],
+      seed: 1,
+      size: 1,
+      defaultModel: config.defaults.model,
+    });
+    const controller = new AbortController();
+    let calls = 0;
+    const user: UserPolicy = (p, r) => {
+      if (++calls === 2) controller.abort(TIME_CAP_STOP_REASON);
+      return happyUser(p, r);
+    };
+    const recorder = new MemoryRecorder();
+    const result = await runSession(
+      { runId: 'run_cap', config, plan: plan!, variantSpec: config.target.variants['control']! },
+      {
+        llm: new FakeLlm(user),
+        adapter: new FakeAdapter(ledgerlySite),
+        recorder,
+        logger,
+        cwd: process.cwd(),
+        signal: controller.signal,
+      },
+    );
+    expect(result.interruptedBy).toBe('time_cap');
+    expect(result.failure).toBeUndefined();
+    expect(result.session.status).toBe('failed');
+    expect(result.session.outcome).toBeUndefined();
+    expect(result.session.error).toBe('run time cap reached');
+    expect(result.session.outcomeReason).toBe('run time cap reached');
+    expect(result.session.steps).toBe(2);
+    expect(result.events.at(-1)?.properties).toMatchObject({ outcome: 'interrupted' });
+    expect(recorder.sessionsFinished[0]?.outcome).toBeUndefined();
+    expect(SessionSchema.safeParse(result.session).success).toBe(true);
+  });
+
+  it('reports where a session failed and the error code, so infra errors are recognizable', async () => {
+    const { run } = setup(happyUser);
+    const throwing = new FakeAdapter(ledgerlySite, { failOnOpen: true });
+    const config = testConfig();
+    const personas = resolvePersonas(config);
+    const [plan] = planSessions(config, personas, {
+      runId: 'run_fail',
+      variants: ['control'],
+      seed: 1,
+      size: 1,
+      defaultModel: config.defaults.model,
+    });
+    const result = await runSession(
+      { runId: 'run_fail', config, plan: plan!, variantSpec: config.target.variants['control']! },
+      {
+        llm: new FakeLlm(happyUser),
+        adapter: throwing,
+        recorder: new MemoryRecorder(),
+        logger,
+        cwd: process.cwd(),
+      },
+    );
+    expect(result.failure).toEqual({
+      location: 'adapter open',
+      message: 'browser failed to launch',
+      code: undefined,
+    });
+    expect(result.interruptedBy).toBeUndefined();
+    expect((await run()).failure).toBeUndefined();
   });
 });

@@ -15,6 +15,13 @@
       "when": 1791564526898,
       "tag": "0001_stall_detection",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791565097229,
+      "tag": "0002_run_termination",
+      "breakpoints": true
     }
   ]
 }

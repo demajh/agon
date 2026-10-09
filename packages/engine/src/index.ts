@@ -65,7 +65,10 @@ export {
 } from './session/judge.js';
 export {
   runSession,
+  isTimeCapStop,
+  TIME_CAP_STOP_REASON,
   type SessionDeps,
+  type SessionFailure,
   type SessionInput,
   type SessionResult,
 } from './session/runner.js';

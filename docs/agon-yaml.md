@@ -14,6 +14,8 @@ A session has three hard stops, all per scenario: `maxSteps`, `budgetUsd` and `s
 
 Recommended value: about 60 for edit-heavy tasks. Measured on 820 real coding-agent sessions, the gaps between writes had p50 6, p90 21, p95 32, p99 58 and max 109 steps, so a threshold of 10 would end a quarter of real stretches. Leave `stallSteps` unset (the default, detection off) for scenarios that poll: a poller that correctly finds nothing new is not stuck, and its observation never changes.
 
+The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, twelve minutes), counted from the moment the run starts: queue time, cold start, adapter setup and session hooks are inside it. When it is reached no new session starts, sessions in flight stop between steps and are recorded without an outcome, and the run ends as a typed partial result (`termination.kind = time_cap_reached`, exit code 3) rather than a failure. See [run-termination.md](run-termination.md).
+
 ## Top level
 
 | field | type | required | default | description |
@@ -286,3 +288,4 @@ Recommended value: about 60 for edit-heavy tasks. Measured on 820 real coding-ag
 | `judgeModel` | string matching `^[a-z0-9-]+\/[A-Za-z0-9._:-]+$` |  |  | Model for the independent judge; defaults to model |
 | `temperature` | number |  | `0.7` |  |
 | `maxConcurrency` | integer |  | `4` | Sessions run in parallel per target |
+| `timeCapMs` | integer |  | `720000` | Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes. |

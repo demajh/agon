@@ -1,6 +1,7 @@
 import {
   INFERRED_EVENTS,
   deterministicId,
+  isAgonError,
   nowIso,
   simProperties,
   type ActResult,
@@ -9,6 +10,7 @@ import {
   type AdapterSession,
   type AgonConfig,
   type AgonEvent,
+  type ErrorCode,
   type EventDraft,
   type LlmClient,
   type LlmUsage,
@@ -48,7 +50,11 @@ export interface SessionDeps {
   patience?: PatienceParams | undefined;
   /** Reuse decisions for identical (persona, scenario, page, history) states via the LLM cache. Default true. */
   cacheDecisions?: boolean | undefined;
-  /** Fires to stop the session between steps; the session finishes as failed with reason "cancelled". */
+  /**
+   * Fires to stop the session between steps. Aborted with `TIME_CAP_STOP_REASON` the session is
+   * interrupted (failed, no outcome, error "run time cap reached"); with any other reason it
+   * finishes as failed with reason "cancelled".
+   */
   signal?: AbortSignal | undefined;
 }
 
@@ -59,10 +65,30 @@ export interface SessionInput {
   variantSpec: VariantSpec;
 }
 
+/** Why a session's status is `failed`, with enough detail to tell infrastructure from product. */
+export interface SessionFailure {
+  /** Where it failed: "setup hook", "adapter open", "step 3 act", ... */
+  location: string;
+  message: string;
+  /** The `AgonError` code when the cause was one (adapter_error, llm_error, ...). */
+  code: ErrorCode | undefined;
+}
+
 export interface SessionResult {
   session: Session;
   steps: Step[];
   events: AgonEvent[];
+  /** Set when the run stopped the session before it reached an outcome. */
+  interruptedBy?: 'time_cap' | undefined;
+  /** Set when the session's status is `failed` because something threw. */
+  failure?: SessionFailure | undefined;
+}
+
+/** `AbortSignal.reason` the orchestrator uses when the run's time cap is reached. */
+export const TIME_CAP_STOP_REASON = 'time_cap_reached';
+
+export function isTimeCapStop(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true && signal.reason === TIME_CAP_STOP_REASON;
 }
 
 function addUsage(session: Session, usage: LlmUsage): void {
@@ -151,6 +177,9 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   let outcome: SessionOutcome | undefined;
   let outcomeReason: string | undefined;
   let declaredDone = false;
+  let interrupted = false;
+  let failure: SessionFailure | undefined;
+  let location = 'setup hook';
   let adapterSession: AdapterSession | undefined;
   let credentials: Record<string, string> | undefined;
   const hookEnv: Record<string, string> = {
@@ -171,6 +200,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       credentials = hook.output;
       hookEnv.AGON_CREDENTIALS = JSON.stringify(credentials);
     }
+    location = 'adapter open';
     adapterSession = await deps.adapter.open(variantSpec, {
       sessionId: session.id,
       variant: plan.variant,
@@ -194,12 +224,20 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
     for (let stepIndex = 0; stepIndex < scenario.maxSteps; stepIndex++) {
       if (deps.signal?.aborted) {
         session.status = 'failed';
-        session.error = 'cancelled';
-        outcome = 'error';
-        outcomeReason = 'cancelled';
+        if (isTimeCapStop(deps.signal)) {
+          // Interrupted: the session gets no outcome, so the analysis leaves it out.
+          interrupted = true;
+          session.error = 'run time cap reached';
+          outcomeReason = 'run time cap reached';
+        } else {
+          session.error = 'cancelled';
+          outcome = 'error';
+          outcomeReason = 'cancelled';
+        }
         break;
       }
       const stepStartedAt = Date.now();
+      location = `step ${stepIndex + 1} observe`;
       const observation = pruneObservation(
         await adapterSession.observe({
           maxTextChars: limits.maxTextChars,
@@ -246,6 +284,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
                 history.at(-1) ?? '',
               ),
             );
+      location = `step ${stepIndex + 1} decide`;
       const { decision, usage } = await decideNextAction(
         { llm: deps.llm, model: persona.model, temperature: config.defaults.temperature },
         { system, message, cacheKey },
@@ -254,6 +293,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       const action = decision.action;
 
       let result: ActResult;
+      location = `step ${stepIndex + 1} act`;
       if (hasRef(action) && !observation.interactive.some((el) => el.ref === action.ref)) {
         result = { ok: false, error: `there is no ${action.ref} on this page`, navigated: false };
       } else if (action.type === 'give_up' || action.type === 'done') {
@@ -380,7 +420,12 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
     session.error = error instanceof Error ? error.message : String(error);
     outcome = 'error';
     outcomeReason = session.error;
-    log.error({ err: error }, 'session failed');
+    failure = {
+      location,
+      message: session.error,
+      code: isAgonError(error) ? error.code : undefined,
+    };
+    log.error({ err: error, location }, 'session failed');
   } finally {
     if (adapterSession) {
       try {
@@ -454,7 +499,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       log.warn({ err: error }, 'judge failed; continuing without judgement');
     }
   }
-  if (outcome === undefined) {
+  if (outcome === undefined && !interrupted) {
     outcome = declaredDone ? 'gave_up' : 'error';
     outcomeReason ??= declaredDone
       ? 'declared done; no judge available'
@@ -464,14 +509,14 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
     await emit([inferred(INFERRED_EVENTS.success, { steps: steps.length })]);
   await emit([
     inferred(INFERRED_EVENTS.sessionEnd, {
-      outcome,
+      outcome: outcome ?? 'interrupted',
       reason: outcomeReason,
       steps: steps.length,
       cost_usd: session.costUsd,
     }),
   ]);
 
-  session.outcome = outcome;
+  if (outcome !== undefined) session.outcome = outcome;
   if (outcomeReason !== undefined) session.outcomeReason = outcomeReason;
   session.status = session.status === 'failed' ? 'failed' : 'finished';
   session.finishedAt = nowIso();
@@ -479,7 +524,13 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   session.metrics = computeSessionMetrics(config, session, events);
   await deps.recorder.sessionFinished(session);
   log.info({ outcome, steps: steps.length, costUsd: session.costUsd }, 'session finished');
-  return { session, steps, events };
+  return {
+    session,
+    steps,
+    events,
+    ...(interrupted ? { interruptedBy: 'time_cap' as const } : {}),
+    ...(failure === undefined ? {} : { failure }),
+  };
 }
 
 async function maybeScreenshot(

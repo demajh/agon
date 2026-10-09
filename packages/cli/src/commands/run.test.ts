@@ -64,6 +64,22 @@ describe('agon run + agon trace', () => {
     const runDirs = readdirSync(outDir).filter((d) => d.startsWith('run_'));
     expect(runDirs).toHaveLength(1);
     const runDir = join(outDir, runDirs[0]!);
+    const recorded = JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')) as {
+      termination: { kind: string; lastCompletedStage: string; capMs: number };
+      counts: Record<string, number>;
+    };
+    expect(recorded.termination).toMatchObject({
+      kind: 'completed',
+      lastCompletedStage: 'export',
+      capMs: 720_000,
+    });
+    expect(recorded.counts).toEqual({
+      planned: 4,
+      running: 0,
+      completed: 4,
+      failed: 0,
+      interrupted: 0,
+    });
     for (const f of [
       'run.json',
       'sessions.jsonl',
@@ -79,6 +95,7 @@ describe('agon run + agon trace', () => {
     expect(readFileSync(join(runDir, 'sessions.jsonl'), 'utf8').trim().split('\n')).toHaveLength(4);
     const printed = text();
     expect(printed).toContain('completed: 4/4 sessions');
+    expect(printed).toMatch(/termination: completed after .*4\/4 sessions executed .* exit code 0/);
     expect(printed).toMatch(/control\s+2\s+100%/);
     expect(printed).toMatch(/treatment\s+2\s+100%/);
     expect(printed).toContain(`output: ${runDir}`);
@@ -128,9 +145,13 @@ describe('agon run + agon trace', () => {
       planned: number;
       counts: { completed: number };
       runDir: string;
+      termination: { kind: string; lastCompletedStage: string };
+      exitCode: number;
     };
     expect(result.planned).toBe(3);
     expect(result.counts.completed).toBe(0);
+    expect(result.termination).toMatchObject({ kind: 'completed', lastCompletedStage: 'setup' });
+    expect(result.exitCode).toBe(0);
     expect(existsSync(join(result.runDir, 'run.json'))).toBe(true);
     const stepsFile = join(result.runDir, 'steps.jsonl');
     expect(existsSync(stepsFile) ? statSync(stepsFile).size : 0).toBe(0);
@@ -158,5 +179,61 @@ describe('agon run + agon trace', () => {
       ),
     ).toBe(1);
     expect(mode.text()).toMatch(/--llm-mode must be one of/);
+  });
+
+  it('ends with the dedicated exit code and a partial outcome when the time cap is reached', async () => {
+    const { file, outDir } = setup();
+    const { out, text } = capture(true);
+    // The clock started twelve minutes ago: the default cap has already elapsed.
+    const code = await runCommand(
+      out,
+      { file, out: outDir, llmMode: 'off' },
+      {
+        llm: new FakeLlm(happyUser),
+        adapter: new FakeAdapter(ledgerlySite),
+        now: () => Date.now() - 720_000,
+      },
+    );
+    expect(code).toBe(3);
+    const result = JSON.parse(text()) as {
+      status: string;
+      exitCode: number;
+      runDir: string;
+      termination: {
+        kind: string;
+        lastCompletedStage: string;
+        sessionsExecuted: number;
+        sessionsPlanned: number;
+        partialDeltaManifest: { exportsWritten: string[] };
+      };
+    };
+    expect(result.status).toBe('completed');
+    expect(result.exitCode).toBe(3);
+    expect(result.termination).toMatchObject({
+      kind: 'time_cap_reached',
+      lastCompletedStage: 'export',
+      sessionsExecuted: 0,
+      sessionsPlanned: 4,
+    });
+    expect(result.termination.partialDeltaManifest.exportsWritten).toEqual([`jsonl:${outDir}`]);
+    const recorded = JSON.parse(readFileSync(join(result.runDir, 'run.json'), 'utf8')) as {
+      termination: { kind: string; lastCompletedStage: string };
+    };
+    expect(recorded.termination).toMatchObject({
+      kind: 'time_cap_reached',
+      lastCompletedStage: 'export',
+    });
+
+    const explicit = capture(true);
+    expect(
+      await runCommand(
+        explicit.out,
+        { file, out: outDir, llmMode: 'off', timeCapMs: 60_000 },
+        { llm: new FakeLlm(happyUser), adapter: new FakeAdapter(ledgerlySite) },
+      ),
+    ).toBe(0);
+    expect(
+      (JSON.parse(explicit.text()) as { termination: { capMs: number } }).termination.capMs,
+    ).toBe(60_000);
   });
 });

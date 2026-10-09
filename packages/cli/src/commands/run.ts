@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createMcpAdapter, createWebAdapter } from '@agon/adapters';
 import { runExperiment } from '@agon/engine';
@@ -6,13 +7,17 @@ import { LLM_MODES, createLlmClient, type LlmMode, type LlmUsageTotals } from '@
 import {
   ConfigError,
   ID_PREFIXES,
+  TERMINATION_EXIT_CODES,
   isAgonError,
   newId,
   readAgonConfig,
+  terminationExitCode,
   type Adapter,
   type AgonConfig,
   type ExportConfig,
   type LlmClient,
+  type Run,
+  type RunTermination,
   type Session,
 } from '@agon/spec';
 import pino from 'pino';
@@ -26,6 +31,8 @@ export interface RunCommandOptions {
   size?: number | undefined;
   model?: string | undefined;
   concurrency?: number | undefined;
+  /** Wall-clock cap for the whole run in ms; default `defaults.timeCapMs`. */
+  timeCapMs?: number | undefined;
   /** Output directory; `<out>/<runId>/` receives the JSONL record and screenshots. */
   out?: string | undefined;
   llmMode?: string | undefined;
@@ -60,6 +67,60 @@ export function createAdapterFor(
 export interface RunCommandDeps {
   llm?: RunLlm | undefined;
   adapter?: RunAdapter | undefined;
+  /** The clock the time cap counts from; tests start a run in the past to hit the cap at once. */
+  now?: (() => number) | undefined;
+}
+
+function describeExport(e: ExportConfig): string {
+  switch (e.type) {
+    case 'jsonl':
+    case 'parquet':
+      return `${e.type}:${resolve(e.path)}`;
+    case 'posthog':
+      return `posthog:${e.host}`;
+    case 'amplitude':
+      return `amplitude:${e.serverUrl}`;
+  }
+}
+
+/**
+ * The run's termination once the local sinks closed: the export stage completed when every sink
+ * closed cleanly, and a partial result lists the sinks that received it.
+ */
+export function finalizeTermination(
+  termination: RunTermination,
+  exports: readonly ExportConfig[],
+  exportErrors: readonly string[],
+): RunTermination {
+  if (exportErrors.length > 0 || termination.lastCompletedStage === 'setup') return termination;
+  const written = exports.map(describeExport);
+  return {
+    ...termination,
+    lastCompletedStage: 'export',
+    ...(termination.partialDeltaManifest === undefined
+      ? {}
+      : {
+          partialDeltaManifest: {
+            ...termination.partialDeltaManifest,
+            exportsWritten: written,
+          },
+        }),
+  };
+}
+
+/** Exit code for a run that threw before it could finish: infrastructure errors get their own. */
+export function exitCodeForError(error: unknown): number {
+  return isAgonError(error) && (error.code === 'adapter_error' || error.code === 'llm_error')
+    ? TERMINATION_EXIT_CODES.infra_aborted
+    : TERMINATION_EXIT_CODES.failed;
+}
+
+function describeTermination(t: RunTermination): string {
+  const head = `${t.kind} after ${(t.elapsedMs / 1000).toFixed(1)}s (cap ${t.capMs} ms) · ${t.sessionsExecuted}/${t.sessionsPlanned} sessions executed · last stage ${t.lastCompletedStage} · exit code ${terminationExitCode(t.kind)}`;
+  const failure = t.firstFailure
+    ? ` · first failure ${t.firstFailure.id} at ${t.firstFailure.location}: ${t.firstFailure.message}`
+    : '';
+  return head + failure;
 }
 
 export interface VariantSummary {
@@ -115,7 +176,7 @@ export async function runCommand(
     { level: options.logLevel ?? process.env['AGON_LOG_LEVEL'] ?? 'warn' },
     pino.destination(2),
   );
-  const startedAt = Date.now();
+  const startedAt = (deps.now ?? Date.now)();
   let adapter: RunAdapter | undefined;
   try {
     const config = readAgonConfig(file, { env: options.env ?? process.env });
@@ -162,6 +223,8 @@ export async function runCommand(
         model: options.model,
         dryRun: options.dryRun,
         concurrency: options.concurrency,
+        timeCapMs: options.timeCapMs,
+        startedAt: new Date(startedAt).toISOString(),
       },
       { llm, adapters: { [adapter.kind]: adapter }, recorder, logger, cwd: dirname(file) },
     );
@@ -169,16 +232,24 @@ export async function runCommand(
     const summary = summarizeSessions(outcome.sessions);
     const elapsedS = (Date.now() - startedAt) / 1000;
     const exportErrors = recorder.exportErrors.map((e) => e.message);
+    const termination = finalizeTermination(outcome.termination, exportConfigs, exportErrors);
+    const run: Run = { ...outcome.run, termination };
+    // The JSONL sink wrote run.json before the sinks closed; stamp the final stage into it.
+    if (existsSync(join(runDir, 'run.json')))
+      writeFileSync(join(runDir, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
+    const exitCode = terminationExitCode(termination.kind);
 
     if (out.options.json) {
       out.json({
         runId,
         runDir,
-        status: outcome.run.status,
+        status: run.status,
         planned: outcome.plans.length,
-        counts: outcome.run.counts,
-        costUsd: outcome.run.costUsd,
+        counts: run.counts,
+        costUsd: run.costUsd,
         elapsedS,
+        termination,
+        exitCode,
         variants: summary,
         llm: totals ?? null,
         exportErrors,
@@ -186,8 +257,9 @@ export async function runCommand(
     } else {
       out.text();
       out.heading(
-        `${runId} ${outcome.run.status}: ${outcome.sessions.length}/${outcome.plans.length} sessions, ${formatUsd(outcome.run.costUsd)}, ${elapsedS.toFixed(1)}s`,
+        `${runId} ${run.status}: ${outcome.sessions.length}/${outcome.plans.length} sessions, ${formatUsd(run.costUsd)}, ${elapsedS.toFixed(1)}s`,
       );
+      out.text(`  termination: ${describeTermination(termination)}`);
       if (options.dryRun) {
         const counts = outcome.plans.reduce<Record<string, number>>(
           (acc, p) => ({ ...acc, [p.variant]: (acc[p.variant] ?? 0) + 1 }),
@@ -222,16 +294,17 @@ export async function runCommand(
       out.text(`  output: ${runDir}`);
       out.text(out.dim(`  next: agon compare ${runDir}   ·   agon trace ${runDir}`));
     }
-    return outcome.run.status === 'completed' ? 0 : 1;
+    return exitCode;
   } catch (error) {
     const message = isAgonError(error)
       ? error.message
       : error instanceof Error
         ? error.message
         : String(error);
-    if (out.options.json) out.json({ ok: false, error: message });
+    const exitCode = exitCodeForError(error);
+    if (out.options.json) out.json({ ok: false, error: message, exitCode });
     else out.fail(message);
-    return 1;
+    return exitCode;
   } finally {
     await adapter?.dispose?.();
   }

@@ -5,10 +5,12 @@ import { runExperiment } from '@agon/engine';
 import { createExporters } from '@agon/exporters';
 import {
   ConfigError,
+  isAgonError,
   type ExportConfig,
   type Recorder,
   type Result,
   type Run,
+  type RunTermination,
   type Session,
 } from '@agon/spec';
 import { buildAnalysisConfig } from '@agon/stats-client';
@@ -154,6 +156,11 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
       if (finished.status === 'completed' && !data.dryRun) {
         try {
           result = await analyze(ctx, finished, log);
+          if (finished.termination)
+            row = {
+              ...finished,
+              termination: { ...finished.termination, lastCompletedStage: 'analysis' },
+            };
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           log.error({ err: error }, 'analysis failed; run completes without a result');
@@ -189,6 +196,8 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
         seed: run.seed,
         dryRun: data.dryRun ?? false,
         concurrency: ctx.config.concurrency,
+        // The cap counts from the moment the run was queued, so queue time is inside it.
+        startedAt: queued.createdAt,
       },
       {
         llm: deps.llm,
@@ -205,11 +214,18 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
     const reason = error instanceof Error ? error.message : String(error);
     log.error({ err: error }, 'run failed');
     finalRun = await runs.setStatus(ctx.db, run.id, 'failed', { error: reason });
+    finalRun = await runs.setTermination(ctx.db, run.id, failureTermination(finalRun, error));
   } finally {
     stopWatching();
     try {
       await exporter.runFinished(finalRun, result);
       await exporter.close();
+      if (finalRun.termination && finalRun.status !== 'failed') {
+        finalRun = await runs.setTermination(ctx.db, run.id, {
+          ...finalRun.termination,
+          lastCompletedStage: 'export',
+        });
+      }
     } catch (error) {
       log.warn({ err: error }, 'export failed');
     }
@@ -243,6 +259,29 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
     { status: finalRun.status, counts: finalRun.counts, resultId: finalRun.resultId },
     'run processed',
   );
+}
+
+/**
+ * The termination of a run that threw outside the engine (unsupported target, dependencies that
+ * would not start): an infrastructure abort when the adapter or model provider is to blame.
+ */
+export function failureTermination(run: Run, error: unknown): RunTermination {
+  const infra =
+    isAgonError(error) && (error.code === 'adapter_error' || error.code === 'llm_error');
+  return {
+    kind: infra ? 'infra_aborted' : 'failed',
+    elapsedMs: Math.max(0, Date.now() - Date.parse(run.createdAt)),
+    capMs: run.config.defaults.timeCapMs,
+    lastCompletedStage: 'setup',
+    sessionsExecuted: run.counts.completed + run.counts.failed,
+    sessionsPlanned: run.counts.planned,
+    failureCount: 1,
+    firstFailure: {
+      id: run.id,
+      location: 'setup',
+      message: error instanceof Error ? error.message : String(error),
+    },
+  };
 }
 
 async function safely(log: Logger, what: string, fn: () => Promise<unknown>): Promise<void> {

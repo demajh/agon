@@ -131,6 +131,15 @@ describeDb('run lifecycle through the pg-boss worker', () => {
     expect(run.costUsd).toBeGreaterThan(0);
     expect(run.startedAt).toBeDefined();
     expect(run.finishedAt).toBeDefined();
+    expect(run.termination).toMatchObject({
+      kind: 'completed',
+      capMs: 720_000,
+      sessionsExecuted: 4,
+      sessionsPlanned: 4,
+      failureCount: 0,
+    });
+    // Analysis runs inside the engine's runFinished; the export stage closes right after.
+    expect(['analysis', 'export']).toContain(run.termination?.lastCompletedStage);
 
     const listed = await h.t.request('GET', `/v1/environments/${env.id}/runs?status=completed`);
     expect((await listed.json<{ items: Run[] }>()).items.map((r) => r.id)).toEqual([run.id]);

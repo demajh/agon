@@ -36,7 +36,7 @@ pnpm agon run examples/demo-app/agon.yaml -n 10
 pnpm agon compare ./agon-out
 ```
 
-Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md).
+Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md). How a run ends (the time cap, the typed `termination` object and the exit codes CI maps to check conclusions) is in [docs/run-termination.md](docs/run-termination.md).
 
 Agon also simulates populations of **AI agents** against MCP servers and APIs: personas with a `harness` block drive `mcp` targets through tool calls, and `check:` success criteria verify the resulting state. See the MCP section of the [quickstart](docs/quickstart.md#running-against-an-mcp-server).
 

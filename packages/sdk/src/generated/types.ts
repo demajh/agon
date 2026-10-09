@@ -1068,6 +1068,11 @@ export interface components {
                  * @default 4
                  */
                 maxConcurrency: number;
+                /**
+                 * @description Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes.
+                 * @default 720000
+                 */
+                timeCapMs: number;
             };
         };
         AgonEvent: {
@@ -1416,10 +1421,53 @@ export interface components {
                 completed: number;
                 /** @default 0 */
                 failed: number;
+                /**
+                 * @description Sessions the run stopped before they reached an outcome (time cap)
+                 * @default 0
+                 */
+                interrupted: number;
             };
             /** @default 0 */
             costUsd: number;
             resultId?: string;
+            /** @description How the run ended; set once it finished */
+            termination?: {
+                /**
+                 * @description completed: every planned session ran (the verdict decides); time_cap_reached: defaults.timeCapMs elapsed, partial result; failed: every executed session failed; infra_aborted: the adapter, target or model provider was unreachable or errored, not the product; cancelled: stopped on request
+                 * @enum {string}
+                 */
+                kind: "completed" | "time_cap_reached" | "failed" | "infra_aborted" | "cancelled";
+                /** @description Wall clock since the run started */
+                elapsedMs: number;
+                /** @description The time cap in force (defaults.timeCapMs) */
+                capMs: number;
+                /** @enum {string} */
+                lastCompletedStage: "setup" | "sessions" | "analysis" | "export";
+                /** @description Sessions that reached an outcome, successful or failed */
+                sessionsExecuted: number;
+                sessionsPlanned: number;
+                /** @default 0 */
+                failureCount: number;
+                /** @description Present when the run stopped early (time cap, cancellation) */
+                partialDeltaManifest?: {
+                    /** @description Sessions that reached an outcome, per variant */
+                    sessionsPerVariant: {
+                        [key: string]: number;
+                    };
+                    /** @description Metric ids computed on those sessions */
+                    metricsComputed: string[];
+                    /** @description Sinks that received the run, as "<type>:<target>" */
+                    exportsWritten: string[];
+                };
+                /** @description Present when at least one session failed */
+                firstFailure?: {
+                    /** @description Session id, or the run id when the run itself failed */
+                    id: string;
+                    /** @description Where it failed, e.g. "adapter open" or "step 3 act" */
+                    location: string;
+                    message: string;
+                };
+            };
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -1442,6 +1490,8 @@ export interface components {
             size?: number;
             /** @description Override defaults.model */
             model?: string;
+            /** @description Override defaults.timeCapMs */
+            timeCapMs?: number;
             /**
              * @description Plan sessions without executing them
              * @default false

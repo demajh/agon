@@ -308,7 +308,7 @@ export async function runLifecycle(
   const result = options.withResult === false ? undefined : makeResult();
   const finishedRun = makeRun({
     status: 'completed',
-    counts: { planned: count, running: 0, completed: count, failed: 0 },
+    counts: { planned: count, running: 0, completed: count, failed: 0, interrupted: 0 },
     costUsd: sessions.reduce((sum, s) => sum + s.costUsd, 0),
     finishedAt: iso(900_000),
     ...(result ? { resultId: result.id } : {}),

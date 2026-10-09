@@ -338,3 +338,55 @@ describe('runExperiment', () => {
     expect(RunSchema.safeParse(noLedger.run).success).toBe(true);
   });
 });
+
+describe('side_effects policies', () => {
+  it('snapshots around every session and records the comparison as an event', async () => {
+    const config = testConfig({
+      population: { seed: 3, size: 2, personas: [{ use: 'eager' }], traitJitter: 0 },
+      policies: [
+        {
+          kind: 'side_effects',
+          id: 'procs',
+          scope: 'session',
+          observe: { processes: true },
+          expected: ['proc:node *'],
+        },
+      ],
+    });
+    // Every snapshot sees one more process than the last: a node worker (expected) at first, then a stray curl.
+    let calls = 0;
+    const processes = async (): Promise<Record<string, string>> => {
+      calls++;
+      const table: Record<string, string> = { '1': 'postgres' };
+      if (calls >= 2) table['2'] = 'node worker.js';
+      if (calls >= 4) table['3'] = 'curl evil';
+      return table;
+    };
+    const recorder = new MemoryRecorder();
+    const outcome = await runExperiment(
+      config,
+      { runId: 'run_fx', concurrency: 1 },
+      {
+        llm: new FakeLlm(happyUser),
+        adapters: { web: new FakeAdapter(ledgerlySite) },
+        recorder,
+        logger,
+        processes,
+      },
+    );
+    expect(outcome.run.status).toBe('completed');
+    const reports = recorder.recordedEvents.filter((e) => e.event === '$agon_side_effects');
+    expect(reports).toHaveLength(2);
+    expect(reports.map((e) => e.properties['unexpected'])).toEqual([0, 1]);
+    expect(reports[1]?.properties).toMatchObject({
+      policy: 'procs',
+      scope: 'session',
+      observed: ['processes'],
+      not_observable: ['network'],
+      expected_list_size: 1,
+      unexpected_changes: ['added:proc:curl evil'],
+      agon_simulated: true,
+      agon_run_id: 'run_fx',
+    });
+  });
+});

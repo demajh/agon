@@ -1,8 +1,17 @@
 import { decisions, environments, results, runs, squads } from '@agon/db';
 import { testConfig } from '@agon/engine/fakes';
-import { AgonConfigSchema, PolicySchema, type AgonConfig, type Result, type Run } from '@agon/spec';
+import {
+  AgonConfigSchema,
+  PolicyBlockedError,
+  PolicySchema,
+  type AgonConfig,
+  type Result,
+  type Run,
+} from '@agon/spec';
 import { describe, expect, it } from 'vitest';
 import {
+  checkProtectedPaths,
+  enforceProtectedPaths,
   evaluateCondition,
   evaluatePolicies,
   parseCondition,
@@ -117,6 +126,13 @@ describe('policy expression grammar', () => {
     expect(() =>
       validatePolicies([PolicySchema.parse({ id: 'p', then: 'reallocate' })]),
     ).not.toThrow();
+    // the policy gates carry no `when`; validation skips them
+    expect(() =>
+      validatePolicies([
+        PolicySchema.parse({ kind: 'protected_paths', id: 'ci', paths: ['.github/**'] }),
+        PolicySchema.parse({ kind: 'side_effects', id: 'fs', observe: { processes: true } }),
+      ]),
+    ).not.toThrow();
   });
 
   it('lists referenced variables once', () => {
@@ -188,6 +204,59 @@ function makeResult(
     assumptions: [],
   };
 }
+
+describe('protected_paths at variant registration', () => {
+  const policies = [
+    PolicySchema.parse({ kind: 'protected_paths', id: 'ci', paths: ['.github/workflows/**'] }),
+    PolicySchema.parse({
+      kind: 'protected_paths',
+      id: 'locks',
+      paths: ['**/pnpm-lock.yaml'],
+      approvals: [{ diffHash: 'h-approved', approvedBy: 'release-manager' }],
+    }),
+    PolicySchema.parse({ id: 'pause-laggards', then: 'pause' }),
+  ];
+
+  it('judges every protected_paths policy and ignores the other kinds', () => {
+    const verdicts = checkProtectedPaths(
+      { policies },
+      { hash: 'h-approved', paths: ['pnpm-lock.yaml', 'src/a.ts'] },
+    );
+    expect(verdicts.map((v) => [v.policyId, v.blocked, v.touched])).toEqual([
+      ['ci', false, []],
+      ['locks', false, ['pnpm-lock.yaml']],
+    ]);
+    expect(verdicts[1]?.approval?.approvedBy).toBe('release-manager');
+    expect(checkProtectedPaths({ policies: [] }, undefined)).toEqual([]);
+  });
+
+  it('throws policy_blocked naming every blocking policy', () => {
+    const attempt = () =>
+      enforceProtectedPaths(
+        { policies },
+        { hash: 'h-other', paths: ['.github/workflows/ci.yml', 'apps/web/pnpm-lock.yaml'] },
+      );
+    expect(attempt).toThrow(PolicyBlockedError);
+    try {
+      attempt();
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'policy_blocked',
+        status: 403,
+        details: {
+          diffHash: 'h-other',
+          verdicts: [
+            { policyId: 'ci', touched: ['.github/workflows/ci.yml'] },
+            { policyId: 'locks', touched: ['apps/web/pnpm-lock.yaml'] },
+          ],
+        },
+      });
+    }
+    expect(() => enforceProtectedPaths({ policies }, undefined)).toThrow(
+      /requires a diff manifest/,
+    );
+  });
+});
 
 describe('variable resolution', () => {
   it('reads result and squad metrics', async () => {
@@ -320,6 +389,33 @@ describeDb('policy engine with the database', () => {
       await evaluatePolicies(h.t.server.context, { trigger: 'run.completed', run, result }),
     ).toEqual([]);
     expect((await decisions.list(h.t.server.db)).items).toEqual([]);
+  });
+
+  it('turns only squad policies into decisions; the policy gates are not triggered here', async () => {
+    await squads.create(h.t.server.db, { slug: 'blue', name: 'Blue' });
+    const config = AgonConfigSchema.parse({
+      ...configWith([{ id: 'notify-all', then: 'notify', approval: 'auto' }]),
+      policies: [
+        { id: 'notify-all', then: 'notify', approval: 'auto' },
+        { kind: 'protected_paths', id: 'ci', paths: ['.github/**'] },
+        { kind: 'side_effects', id: 'fs', observe: { processes: true } },
+        {
+          kind: 'shadow_diff',
+          id: 'api',
+          budget: { disallowedDiffs: 0, expiresAt: '2030-01-01T00:00:00.000Z', owner: 'api-team' },
+        },
+      ],
+    });
+    const { run, result } = await completedRun(config, 'ship', 0.98);
+    const outcomes = await evaluatePolicies(h.t.server.context, {
+      trigger: 'result.ready',
+      run,
+      result,
+    });
+    expect(outcomes.map((o) => o.policyId)).toEqual(['notify-all']);
+    expect((await decisions.list(h.t.server.db)).items.map((d) => d.policyId)).toEqual([
+      'notify-all',
+    ]);
   });
 
   it('proposes (and does not act) when approval is human; the default for pause and kill', async () => {

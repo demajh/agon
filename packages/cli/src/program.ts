@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { personasListCommand, personasShowCommand } from './commands/personas.js';
 import { compareCommand } from './commands/compare.js';
+import { protectedPathsCommand, shadowDiffCommand } from './commands/gate.js';
 import { liveWindowCommand } from './commands/live-window.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
@@ -246,6 +247,37 @@ export function createProgram(deps: ProgramDeps = {}): Command {
         exit(await liveWindowCommand(output(), opts));
       },
     );
+
+  const gate = program
+    .command('gate')
+    .description('Policy gates that run outside a session: protected_paths and shadow_diff');
+  gate
+    .command('protected-paths')
+    .description(
+      "Hash the diff base...head and check it against the config's protected_paths policies (exit 1 when blocked); --json prints the manifest a variant registration sends",
+    )
+    .argument('[file]', 'path to agon.yaml', 'agon.yaml')
+    .requiredOption(
+      '--base <ref>',
+      'base ref, e.g. origin/main (the diff starts at the merge base)',
+    )
+    .option('--head <ref>', 'head ref (default HEAD)')
+    .option('--repo <dir>', 'git repository (default the current directory)')
+    .action((file: string, opts: { base: string; head?: string; repo?: string }) => {
+      exit(protectedPathsCommand(output(), { file, ...opts }));
+    });
+  gate
+    .command('shadow-diff')
+    .description(
+      'Compare a control output with a variant output under a shadow_diff policy (exit 1 over budget)',
+    )
+    .argument('[file]', 'path to agon.yaml', 'agon.yaml')
+    .requiredOption('--control <file>', 'control output (JSON)')
+    .requiredOption('--variant <file>', 'variant output (JSON)')
+    .option('--policy <id>', 'shadow_diff policy id (default: the only one)')
+    .action(async (file: string, opts: { control: string; variant: string; policy?: string }) => {
+      exit(await shadowDiffCommand(output(), { file, ...opts }));
+    });
 
   const personas = program.command('personas').description('Browse the built-in persona library');
   personas

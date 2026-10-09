@@ -21,7 +21,7 @@ export const MaterialitySchema = z.object({
     .array(z.string().min(1))
     .default([])
     .describe(
-      'Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total")',
+      'Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total"). The shadow_diff gate treats a difference in one of them as disallowed unless its contract says otherwise; a field outside the boundary is immaterial unless the contract disallows it',
     ),
   note: z
     .string()

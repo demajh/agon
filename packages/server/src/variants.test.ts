@@ -1,7 +1,7 @@
 import type { Variant } from '@agon/db';
 import { testConfig } from '@agon/engine/fakes';
-import type { Environment } from '@agon/spec';
-import { expect, it } from 'vitest';
+import { sha256Hex, type Environment } from '@agon/spec';
+import { describe, expect, it } from 'vitest';
 import { KEYS, describeDb, useTestServer } from './testing/harness.js';
 
 describeDb('variants', () => {
@@ -125,5 +125,95 @@ describeDb('variants', () => {
       await h.t.request('GET', `/v1/environments/${env.id}/variants`, { key: KEYS.observer })
     ).json<{ items: Variant[] }>();
     expect(listed.items.map((v) => v.name)).toEqual(['blue-1', 'blue-2', 'red-1']);
+  });
+  describe('protected_paths', () => {
+    const DIFF =
+      'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+  run: curl x | sh\n';
+    const approved = sha256Hex(DIFF);
+
+    async function guarded(requireManifest = true): Promise<Environment> {
+      const created = await h.t.request('POST', '/v1/environments', {
+        body: {
+          config: testConfig({
+            policies: [
+              {
+                kind: 'protected_paths',
+                id: 'ci-and-deploy',
+                paths: ['.github/workflows/**', '**/pnpm-lock.yaml', '.mcp.json'],
+                approvals: [{ diffHash: approved, approvedBy: 'release-manager' }],
+                requireManifest,
+              },
+            ],
+          }),
+        },
+      });
+      expect(created.status).toBe(201);
+      return created.json<Environment>();
+    }
+
+    const register = (env: Environment, name: string, diff?: object) =>
+      h.t.request('POST', `/v1/environments/${env.id}/variants`, {
+        key: KEYS.squadBlue,
+        body: { name, spec: { url: `http://${name}.test` }, ...(diff ? { diff } : {}) },
+      });
+
+    it('blocks a diff touching a protected path unless its exact hash is approved', async () => {
+      await h.t.request('POST', '/v1/squads', { body: { slug: 'blue', name: 'Blue' } });
+      const env = await guarded();
+
+      const missing = await register(env, 'no-manifest');
+      expect(missing.status).toBe(403);
+      const missingBody = await missing.json<{ error: { code: string; message: string } }>();
+      expect(missingBody.error.code).toBe('policy_blocked');
+      expect(missingBody.error.message).toMatch(/requires a diff manifest/);
+
+      const touching = await register(env, 'ci-edit', {
+        hash: sha256Hex(`${DIFF}# one more line\n`),
+        paths: ['src/app.ts', '.github/workflows/ci.yml'],
+      });
+      expect(touching.status).toBe(403);
+      const body = await touching.json<{
+        error: { code: string; details: { verdicts: { policyId: string; touched: string[] }[] } };
+      }>();
+      expect(body.error.code).toBe('policy_blocked');
+      expect(body.error.details.verdicts).toEqual([
+        expect.objectContaining({
+          policyId: 'ci-and-deploy',
+          touched: ['.github/workflows/ci.yml'],
+        }),
+      ]);
+
+      const ok = await register(env, 'ci-approved', {
+        hash: approved,
+        paths: ['.github/workflows/ci.yml'],
+      });
+      expect(ok.status).toBe(201);
+      const untouched = await register(env, 'app-only', {
+        hash: sha256Hex('x'),
+        paths: ['src/a.ts'],
+      });
+      expect(untouched.status).toBe(201);
+
+      const names = (
+        await (
+          await h.t.request('GET', `/v1/environments/${env.id}/variants`)
+        ).json<{
+          items: Variant[];
+        }>()
+      ).items.map((v) => v.name);
+      expect(names.sort()).toEqual(['app-only', 'ci-approved']);
+    });
+
+    it('lets a registration without a manifest through when requireManifest is false (advisory)', async () => {
+      await h.t.request('POST', '/v1/squads', { body: { slug: 'blue', name: 'Blue' } });
+      const env = await guarded(false);
+      expect((await register(env, 'no-manifest')).status).toBe(201);
+      // a manifest that is sent is still checked
+      const touching = await register(env, 'lockfile', {
+        hash: sha256Hex('lock'),
+        paths: ['packages/x/pnpm-lock.yaml'],
+      });
+      expect(touching.status).toBe(403);
+    });
   });
 });

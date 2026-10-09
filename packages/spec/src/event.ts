@@ -98,5 +98,7 @@ export const INFERRED_EVENTS = {
   success: '$agon_success',
   toolCall: '$agon_tool_call',
   toolError: '$agon_tool_error',
+  /** Emitted by the side_effects policy gate after a snapshot-call-snapshot comparison. */
+  sideEffects: '$agon_side_effects',
 } as const;
 export type InferredEventName = (typeof INFERRED_EVENTS)[keyof typeof INFERRED_EVENTS];

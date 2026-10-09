@@ -257,7 +257,7 @@ export interface paths {
         put?: never;
         /**
          * Register (or replace) a variant
-         * @description Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad.
+         * @description Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad. When the environment config has `protected_paths` policies, the request must carry the diff manifest (`diff`) unless the policy sets `requireManifest: false`; a diff that touches a protected path is refused with 403 `policy_blocked` unless an approval for its exact hash is recorded in the policy.
          */
         post: operations["registerVariant"];
         delete?: never;
@@ -988,7 +988,7 @@ export interface components {
                  */
                 materiality: {
                     /**
-                     * @description Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total")
+                     * @description Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total"). The shadow_diff gate treats a difference in one of them as disallowed unless its contract says otherwise; a field outside the boundary is immaterial unless the contract disallows it
                      * @default []
                      */
                     fields: string[];
@@ -1033,7 +1033,13 @@ export interface components {
                 id: string;
             };
             /** @default [] */
-            policies: {
+            policies: ({
+                /**
+                 * @description The default kind: a squad governance policy (reallocate, pause, resume, kill, notify)
+                 * @default squad
+                 * @enum {string}
+                 */
+                kind: "squad";
                 id: string;
                 name?: string;
                 /**
@@ -1064,7 +1070,124 @@ export interface components {
                 cooldown: string;
                 /** @default 5 */
                 maxPerDay: number;
-            }[];
+            } | {
+                /** @enum {string} */
+                kind: "protected_paths";
+                id: string;
+                name?: string;
+                /** @description Globs (`*`, `**`, `?`) of paths a less-sandboxed process will later read and act on: CI workflow files, MCP server definitions, deploy manifests, lockfiles. A diff that touches one is blocked unless an approval exists for that exact diff hash */
+                paths: string[];
+                /**
+                 * @description Hand-written approvals, recorded against the diff hash, not the variant
+                 * @default []
+                 */
+                approvals: {
+                    /** @description sha256 of the exact diff text the approval covers (`agon gate protected-paths --json` prints it) */
+                    diffHash: string;
+                    /** @description Who approved the diff */
+                    approvedBy: string;
+                    /** Format: date-time */
+                    approvedAt?: string;
+                    /** @description Why the change to a protected path is acceptable */
+                    note?: string;
+                }[];
+                /**
+                 * @description Block a variant registration that carries no diff manifest. With false the check cannot run and the registration is let through; the gate is then advisory
+                 * @default true
+                 */
+                requireManifest: boolean;
+            } | {
+                /** @enum {string} */
+                kind: "side_effects";
+                id: string;
+                name?: string;
+                /**
+                 * @description Snapshot before and after each session, or before and after each tool call
+                 * @default session
+                 * @enum {string}
+                 */
+                scope: "session" | "tool_call";
+                /** @description Where to look. The file tree and the process table are observation points; the network is not observable and is reported as such */
+                observe: {
+                    /** @description Snapshot the file tree under root: a content hash per file */
+                    files?: {
+                        /** @description Directory to snapshot, relative to the working directory */
+                        root: string;
+                        /**
+                         * @description Globs never snapshotted
+                         * @default [
+                         *       "**\/node_modules/**",
+                         *       "**\/.git/**"
+                         *     ]
+                         */
+                        ignore: string[];
+                    };
+                    /**
+                     * @description Snapshot the process table (unix `ps`); entries are matched as "proc:<command>"
+                     * @default false
+                     */
+                    processes: boolean;
+                };
+                /**
+                 * @description Globs of paths (and "proc:<command>" entries) allowed to change. The size of this list is recorded with every report so its growth can be measured
+                 * @default []
+                 */
+                expected: string[];
+            } | {
+                /** @enum {string} */
+                kind: "shadow_diff";
+                id: string;
+                name?: string;
+                /**
+                 * @description Which output fields may differ between control and variant, and how
+                 * @default {}
+                 */
+                contract: {
+                    /**
+                     * @description Dotted field paths (globs with `*` per segment, `**` across segments) -> allow (skipped), disallow (diffed), semantic (a judge decides whether the difference is one of meaning)
+                     * @default {}
+                     */
+                    fields: {
+                        [key: string]: "allow" | "disallow" | "semantic";
+                    };
+                    /**
+                     * @description Rule for fields the contract does not list and the materiality boundary does not name
+                     * @default allow
+                     * @enum {string}
+                     */
+                    default: "allow" | "disallow";
+                };
+                /** @description A count of disallowed diffs with an expiry and a named owner */
+                budget: {
+                    /** @description Disallowed diffs tolerated before the gate fails */
+                    disallowedDiffs: number;
+                    /**
+                     * Format: date-time
+                     * @description After this the budget is void and the gate fails
+                     */
+                    expiresAt: string;
+                    /** @description Who owns the budget, renews it or retires it */
+                    owner: string;
+                };
+                /**
+                 * @description Hand-written, each with an owner and an expiry; a repeated one is a config error
+                 * @default []
+                 */
+                exceptions: {
+                    /** @description Dotted path of the field the exception covers */
+                    field: string;
+                    /** @description The diffHash the gate reported for the disallowed diff */
+                    diffHash: string;
+                    /** @description Who owns the exception and retires it */
+                    owner: string;
+                    /**
+                     * Format: date-time
+                     * @description After this the exception no longer covers the diff
+                     */
+                    expiresAt: string;
+                    reason?: string;
+                }[];
+            })[];
             /** @default {} */
             defaults: {
                 /**
@@ -1203,7 +1326,7 @@ export interface components {
         ErrorResponse: {
             error: {
                 /** @enum {string} */
-                code: "validation_error" | "config_error" | "not_found" | "conflict" | "unauthorized" | "forbidden" | "budget_exceeded" | "adapter_error" | "llm_error" | "export_error" | "internal_error";
+                code: "validation_error" | "config_error" | "not_found" | "conflict" | "unauthorized" | "forbidden" | "budget_exceeded" | "adapter_error" | "llm_error" | "export_error" | "policy_blocked" | "internal_error";
                 message: string;
                 details?: unknown;
             };
@@ -1346,6 +1469,17 @@ export interface components {
             /** @description Squad credited with this variant */
             squad?: string;
             gitRef?: string;
+            /** @description The diff manifest. Required when the environment has a `protected_paths` policy with `requireManifest` (the default); a diff touching a protected path registers only if an approval for its exact hash is recorded in the policy */
+            diff?: {
+                /** @description sha256 of the diff text; approvals are matched against it */
+                hash: string;
+                /** @description Repository-relative paths the diff touches */
+                paths: string[];
+                /** @description Base commit or ref */
+                base?: string;
+                /** @description Head commit or ref */
+                head?: string;
+            };
         };
         Result: {
             id: string;
@@ -3027,7 +3161,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The key role may not perform this operation (`forbidden`) */
+            /** @description The key role may not perform this operation (`forbidden`), or a policy gate refused it (`policy_blocked`) */
             403: {
                 headers: {
                     [name: string]: unknown;

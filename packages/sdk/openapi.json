@@ -537,7 +537,7 @@
                     "type": "array",
                     "items": { "type": "string", "minLength": 1 },
                     "default": [],
-                    "description": "Dotted paths of output fields that count as decision-relevant (e.g. \"outcome\", \"metrics.activation\", \"response.total\")"
+                    "description": "Dotted paths of output fields that count as decision-relevant (e.g. \"outcome\", \"metrics.activation\", \"response.total\"). The shadow_diff gate treats a difference in one of them as disallowed unless its contract says otherwise; a field outside the boundary is immaterial unless the contract disallows it"
                   },
                   "note": {
                     "type": "string",
@@ -614,40 +614,235 @@
           "policies": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
-                "name": { "type": "string" },
-                "on": {
-                  "type": "string",
-                  "enum": ["run.completed", "result.ready", "schedule"],
-                  "default": "result.ready"
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": ["squad"],
+                      "default": "squad",
+                      "description": "The default kind: a squad governance policy (reallocate, pause, resume, kill, notify)"
+                    },
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "on": {
+                      "type": "string",
+                      "enum": ["run.completed", "result.ready", "schedule"],
+                      "default": "result.ready"
+                    },
+                    "when": {
+                      "type": "string",
+                      "description": "Boolean expression over squad and result metrics, e.g. \"squad.p_best_rolling(5) < 0.10\""
+                    },
+                    "then": {
+                      "type": "string",
+                      "enum": ["reallocate", "pause", "resume", "kill", "notify"]
+                    },
+                    "method": { "type": "string", "enum": ["thompson"], "default": "thompson" },
+                    "floor": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.1,
+                      "description": "Minimum allocation any active squad keeps"
+                    },
+                    "approval": {
+                      "type": "string",
+                      "enum": ["auto", "human"],
+                      "description": "Defaults to human for pause/kill, auto otherwise"
+                    },
+                    "cooldown": {
+                      "type": "string",
+                      "pattern": "^\\d+(ms|s|m|h|d)$",
+                      "default": "24h"
+                    },
+                    "maxPerDay": { "type": "integer", "exclusiveMinimum": 0, "default": 5 }
+                  },
+                  "required": ["id", "then"]
                 },
-                "when": {
-                  "type": "string",
-                  "description": "Boolean expression over squad and result metrics, e.g. \"squad.p_best_rolling(5) < 0.10\""
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["protected_paths"] },
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "paths": {
+                      "type": "array",
+                      "items": { "type": "string", "minLength": 1 },
+                      "minItems": 1,
+                      "description": "Globs (`*`, `**`, `?`) of paths a less-sandboxed process will later read and act on: CI workflow files, MCP server definitions, deploy manifests, lockfiles. A diff that touches one is blocked unless an approval exists for that exact diff hash"
+                    },
+                    "approvals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "diffHash": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "sha256 of the exact diff text the approval covers (`agon gate protected-paths --json` prints it)"
+                          },
+                          "approvedBy": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Who approved the diff"
+                          },
+                          "approvedAt": { "type": "string", "format": "date-time" },
+                          "note": {
+                            "type": "string",
+                            "description": "Why the change to a protected path is acceptable"
+                          }
+                        },
+                        "required": ["diffHash", "approvedBy"]
+                      },
+                      "default": [],
+                      "description": "Hand-written approvals, recorded against the diff hash, not the variant"
+                    },
+                    "requireManifest": {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Block a variant registration that carries no diff manifest. With false the check cannot run and the registration is let through; the gate is then advisory"
+                    }
+                  },
+                  "required": ["kind", "id", "paths"]
                 },
-                "then": {
-                  "type": "string",
-                  "enum": ["reallocate", "pause", "resume", "kill", "notify"]
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["side_effects"] },
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "scope": {
+                      "type": "string",
+                      "enum": ["session", "tool_call"],
+                      "default": "session",
+                      "description": "Snapshot before and after each session, or before and after each tool call"
+                    },
+                    "observe": {
+                      "type": "object",
+                      "properties": {
+                        "files": {
+                          "type": "object",
+                          "properties": {
+                            "root": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Directory to snapshot, relative to the working directory"
+                            },
+                            "ignore": {
+                              "type": "array",
+                              "items": { "type": "string", "minLength": 1 },
+                              "default": ["**/node_modules/**", "**/.git/**"],
+                              "description": "Globs never snapshotted"
+                            }
+                          },
+                          "required": ["root"],
+                          "description": "Snapshot the file tree under root: a content hash per file"
+                        },
+                        "processes": {
+                          "type": "boolean",
+                          "default": false,
+                          "description": "Snapshot the process table (unix `ps`); entries are matched as \"proc:<command>\""
+                        }
+                      },
+                      "description": "Where to look. The file tree and the process table are observation points; the network is not observable and is reported as such"
+                    },
+                    "expected": {
+                      "type": "array",
+                      "items": { "type": "string", "minLength": 1 },
+                      "default": [],
+                      "description": "Globs of paths (and \"proc:<command>\" entries) allowed to change. The size of this list is recorded with every report so its growth can be measured"
+                    }
+                  },
+                  "required": ["kind", "id", "observe"]
                 },
-                "method": { "type": "string", "enum": ["thompson"], "default": "thompson" },
-                "floor": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "default": 0.1,
-                  "description": "Minimum allocation any active squad keeps"
-                },
-                "approval": {
-                  "type": "string",
-                  "enum": ["auto", "human"],
-                  "description": "Defaults to human for pause/kill, auto otherwise"
-                },
-                "cooldown": { "type": "string", "pattern": "^\\d+(ms|s|m|h|d)$", "default": "24h" },
-                "maxPerDay": { "type": "integer", "exclusiveMinimum": 0, "default": 5 }
-              },
-              "required": ["id", "then"]
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["shadow_diff"] },
+                    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                    "name": { "type": "string" },
+                    "contract": {
+                      "type": "object",
+                      "properties": {
+                        "fields": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "enum": ["allow", "disallow", "semantic"]
+                          },
+                          "default": {},
+                          "description": "Dotted field paths (globs with `*` per segment, `**` across segments) -> allow (skipped), disallow (diffed), semantic (a judge decides whether the difference is one of meaning)"
+                        },
+                        "default": {
+                          "type": "string",
+                          "enum": ["allow", "disallow"],
+                          "default": "allow",
+                          "description": "Rule for fields the contract does not list and the materiality boundary does not name"
+                        }
+                      },
+                      "default": {},
+                      "description": "Which output fields may differ between control and variant, and how"
+                    },
+                    "budget": {
+                      "type": "object",
+                      "properties": {
+                        "disallowedDiffs": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Disallowed diffs tolerated before the gate fails"
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "After this the budget is void and the gate fails"
+                        },
+                        "owner": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Who owns the budget, renews it or retires it"
+                        }
+                      },
+                      "required": ["disallowedDiffs", "expiresAt", "owner"],
+                      "description": "A count of disallowed diffs with an expiry and a named owner"
+                    },
+                    "exceptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Dotted path of the field the exception covers"
+                          },
+                          "diffHash": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The diffHash the gate reported for the disallowed diff"
+                          },
+                          "owner": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Who owns the exception and retires it"
+                          },
+                          "expiresAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "After this the exception no longer covers the diff"
+                          },
+                          "reason": { "type": "string" }
+                        },
+                        "required": ["field", "diffHash", "owner", "expiresAt"]
+                      },
+                      "default": [],
+                      "description": "Hand-written, each with an owner and an expiry; a repeated one is a config error"
+                    }
+                  },
+                  "required": ["kind", "id", "budget"]
+                }
+              ]
             },
             "default": []
           },
@@ -875,6 +1070,7 @@
                   "adapter_error",
                   "llm_error",
                   "export_error",
+                  "policy_blocked",
                   "internal_error"
                 ]
               },
@@ -1084,7 +1280,26 @@
             "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
             "description": "Squad credited with this variant"
           },
-          "gitRef": { "type": "string" }
+          "gitRef": { "type": "string" },
+          "diff": {
+            "type": "object",
+            "properties": {
+              "hash": {
+                "type": "string",
+                "minLength": 1,
+                "description": "sha256 of the diff text; approvals are matched against it"
+              },
+              "paths": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Repository-relative paths the diff touches"
+              },
+              "base": { "type": "string", "description": "Base commit or ref" },
+              "head": { "type": "string", "description": "Head commit or ref" }
+            },
+            "required": ["hash", "paths"],
+            "description": "The diff manifest. Required when the environment has a `protected_paths` policy with `requireManifest` (the default); a diff touching a protected path registers only if an approval for its exact hash is recorded in the policy"
+          }
         },
         "required": ["name", "spec"]
       },
@@ -2911,7 +3126,7 @@
         "tags": ["Variants"],
         "operationId": "registerVariant",
         "summary": "Register (or replace) a variant",
-        "description": "Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad.",
+        "description": "Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad. When the environment config has `protected_paths` policies, the request must carry the diff manifest (`diff`) unless the policy sets `requireManifest: false`; a diff that touches a protected path is refused with 403 `policy_blocked` unless an approval for its exact hash is recorded in the policy.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -2948,7 +3163,7 @@
             }
           },
           "403": {
-            "description": "The key role may not perform this operation (`forbidden`)",
+            "description": "The key role may not perform this operation (`forbidden`), or a policy gate refused it (`policy_blocked`)",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
             }

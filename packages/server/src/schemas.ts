@@ -8,6 +8,7 @@ import {
   AgonEventSchema,
   DecisionSchema,
   DecisionStatusSchema,
+  DiffManifestSchema,
   EnvironmentSchema,
   ErrorCodes,
   IdSchema,
@@ -63,6 +64,11 @@ export const SquadControlMessageRef = SquadControlMessageSchema.meta({
 export const DecisionRef = DecisionSchema.meta({ id: 'Decision' });
 export const PersonaRef = PersonaSchema.meta({ id: 'Persona' });
 export const TicketSourceRef = TicketSourceSchema.meta({ id: 'TicketSource' });
+export const DiffManifestRef = DiffManifestSchema.meta({
+  id: 'DiffManifest',
+  description:
+    'What a variant registration declares about the change it deploys: the hash of the diff text and the repository-relative paths it touches. `protected_paths` policies are checked against it.',
+});
 
 /** An API key as returned by the API: the stored hash is never exposed. */
 export const ApiKeyPublicSchema = ApiKeySchema.omit({ keyHash: true }).meta({ id: 'ApiKey' });
@@ -151,6 +157,9 @@ export const RegisterVariantBodySchema = z
     spec: VariantSpecRef,
     squad: SlugSchema.optional().describe('Squad credited with this variant'),
     gitRef: z.string().optional(),
+    diff: DiffManifestRef.optional().describe(
+      'The diff manifest. Required when the environment has a `protected_paths` policy with `requireManifest` (the default); a diff touching a protected path registers only if an approval for its exact hash is recorded in the policy',
+    ),
   })
   .meta({ id: 'RegisterVariantBody' });
 

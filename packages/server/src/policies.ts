@@ -1,6 +1,9 @@
 /**
  * Minimal policy engine: a safe evaluator for `policies[].when` expressions and the loop that
- * turns matching policies into Decisions (proposed or executed) with cooldown and daily caps.
+ * turns matching squad policies into Decisions (proposed or executed) with cooldown and daily
+ * caps, plus the server's half of the policy gates: `protected_paths` is enforced at variant
+ * registration against the diff manifest the registrant sends. (`side_effects` runs in the engine
+ * around sessions or tool calls; `shadow_diff` is a pure comparison in `@agon/spec`.)
  *
  * Grammar (whitespace-insensitive, `and` binds tighter than `or`):
  *
@@ -16,13 +19,21 @@
 import { decisions, squads, type Db } from '@agon/db';
 import {
   ConfigError,
+  PolicyBlockedError,
   durationToMs,
+  evaluateProtectedPaths,
+  policiesOfKind,
   policyApproval,
+  squadPolicies,
+  type AgonConfig,
   type Decision,
+  type DiffManifest,
   type Policy,
+  type ProtectedPathsVerdict,
   type Result,
   type Run,
   type Squad,
+  type SquadPolicy,
 } from '@agon/spec';
 import type { AppContext } from './context.js';
 import { decide, reallocate } from './squads/actions.js';
@@ -316,9 +327,9 @@ export function evaluateCondition(expr: Expr, values: ReadonlyMap<string, Variab
   }
 }
 
-/** Parses every `when` in a config's policies, reporting the first bad one as `ConfigError`. */
+/** Parses every `when` in a config's squad policies, reporting the first bad one as `ConfigError`. */
 export function validatePolicies(policies: readonly Policy[]): void {
-  for (const policy of policies) {
+  for (const policy of squadPolicies(policies)) {
     if (policy.when === undefined) continue;
     try {
       parseCondition(policy.when);
@@ -404,7 +415,7 @@ export type PolicySkipReason =
 
 export interface PolicyOutcome {
   policyId: string;
-  action: Policy['then'];
+  action: SquadPolicy['then'];
   squadId?: string;
   squadSlug?: string;
   values: Record<string, VariableValue>;
@@ -417,7 +428,11 @@ const DAY_MS = 24 * 3_600_000;
 
 async function recentDecisions(
   db: Db,
-  filter: { kind: Policy['then']; squadId?: string | undefined; policyId?: string | undefined },
+  filter: {
+    kind: SquadPolicy['then'];
+    squadId?: string | undefined;
+    policyId?: string | undefined;
+  },
   since: number,
 ): Promise<Decision[]> {
   const page = await decisions.list(db, {
@@ -432,7 +447,7 @@ async function recentDecisions(
 /** `cooldown` and `maxPerDay`, judged against decisions of the same kind for the same squad. */
 export async function guardrailSkip(
   db: Db,
-  policy: Policy,
+  policy: SquadPolicy,
   target: { squadId?: string | undefined; policyId?: string | undefined },
   now: Date,
 ): Promise<'cooldown' | 'max_per_day' | undefined> {
@@ -462,8 +477,9 @@ function numericMetrics(values: ReadonlyMap<string, VariableValue>): Record<stri
 }
 
 /**
- * Evaluates the run config's policies for one trigger. Every match becomes a Decision: proposed
- * when the policy needs human approval, otherwise approved and executed on the spot.
+ * Evaluates the run config's squad policies for one trigger. Every match becomes a Decision:
+ * proposed when the policy needs human approval, otherwise approved and executed on the spot.
+ * The policy gates (`protected_paths`, `side_effects`, `shadow_diff`) are not triggered here.
  */
 export async function evaluatePolicies(
   ctx: AppContext,
@@ -471,7 +487,7 @@ export async function evaluatePolicies(
 ): Promise<PolicyOutcome[]> {
   const now = input.now ?? new Date();
   const outcomes: PolicyOutcome[] = [];
-  const policies = input.run.config.policies.filter((p) => p.on === input.trigger);
+  const policies = squadPolicies(input.run.config.policies).filter((p) => p.on === input.trigger);
   if (policies.length === 0) return outcomes;
   const credited = creditedSquads(input.run.config);
   const evidenceBase = {
@@ -587,4 +603,42 @@ export async function evaluatePolicies(
     }
   }
   return outcomes;
+}
+
+// --- policy gates ---------------------------------------------------------------------------------
+
+/** Every `protected_paths` policy of the config, judged against one diff manifest. */
+export function checkProtectedPaths(
+  config: Pick<AgonConfig, 'policies'>,
+  manifest: DiffManifest | undefined,
+): ProtectedPathsVerdict[] {
+  return policiesOfKind(config.policies, 'protected_paths').map((policy) =>
+    evaluateProtectedPaths(policy, manifest),
+  );
+}
+
+/**
+ * The variant-registration check: throws `PolicyBlockedError` (403 `policy_blocked`) when a
+ * `protected_paths` policy blocks the diff, naming every blocking policy and path. Returns the
+ * verdicts otherwise (empty when the config has no such policy). The manifest is what the
+ * registrant declares; the server has no repository to recompute it from, so the check catches a
+ * careless change, not a registrant that lies about its diff.
+ */
+export function enforceProtectedPaths(
+  config: Pick<AgonConfig, 'policies'>,
+  manifest: DiffManifest | undefined,
+): ProtectedPathsVerdict[] {
+  const verdicts = checkProtectedPaths(config, manifest);
+  const blocked = verdicts.filter((v) => v.blocked);
+  if (blocked.length > 0) {
+    throw new PolicyBlockedError(blocked.map((v) => v.reason).join('; '), {
+      verdicts: blocked.map((v) => ({
+        policyId: v.policyId,
+        touched: v.touched,
+        reason: v.reason,
+      })),
+      diffHash: manifest?.hash,
+    });
+  }
+  return verdicts;
 }

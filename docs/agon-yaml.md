@@ -16,6 +16,35 @@ Recommended value: about 60 for edit-heavy tasks. Measured on 820 real coding-ag
 
 The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, twelve minutes), counted from the moment the run starts: queue time, cold start, adapter setup and session hooks are inside it. When it is reached no new session starts, sessions in flight stop between steps and are recorded without an outcome, and the run ends as a typed partial result (`termination.kind = time_cap_reached`, exit code 3) rather than a failure. See [run-termination.md](run-termination.md).
 
+## Policy gates
+
+`policies[]` holds two families, told apart by `kind`. The default, `kind: squad` (it can be left out), is a squad governance policy: when its `when` matches a run or a result it reallocates, pauses, resumes, kills or notifies, always through a `Decision` row. The other three kinds are gates, checks on what a variant changes, each enforced at its own point. Where a gate only reports, this section says so. Every policy, gates included, is part of the requirements digest each result carries, together with the analysis section and its materiality boundary ([receipts-and-findings.md](receipts-and-findings.md)).
+
+### `protected_paths`
+
+Some files are written by an agent but read and acted on later by a process with more privileges than the agent had: CI workflow files, MCP server definitions, deploy manifests, lockfiles. `paths` lists them as globs (`*` within one path segment, `**` across segments, `?` one character). A variant whose diff touches one is blocked unless `approvals` holds an approval for that exact diff hash. Approvals are recorded against the diff, never against a variant name, so a variant that changes again needs a new approval.
+
+- **Enforced at variant registration.** `POST /v1/environments/{id}/variants` carries a diff manifest, `diff: { hash, paths, base?, head? }`. A blocked registration is refused with 403 `policy_blocked` naming each blocking policy and path, and nothing is stored. A registration without a manifest is refused while `requireManifest` is true (the default); with `requireManifest: false` it is let through unchecked and the gate is advisory.
+- **The hash is canonical.** `agon gate protected-paths --base origin/main` computes the manifest from git: the sha256 of `git diff --no-color --no-ext-diff --no-renames --full-index --binary <base>...<head>` (the change since the merge base; a rename counts as both of its paths) and the paths it touches. It checks the manifest against the config's policies, exits 1 when one blocks it, and prints the manifest with `--json`, so the approver and the registrant compute the same hash.
+- **What it does not catch.** The server has no repository to recompute the diff from, so it checks the manifest the registrant declares: a registrant that lies about its diff passes. The gate is a tripwire for careless changes, not a defence against a hostile agent. Local `agon run` registers no variants and does not check this policy.
+- **Open question: where should the approval happen?** In the pull request, where a reviewer approves the hash before merge (what this implements, checked at the first point Agon sees the change), or at the agent runtime before the file is written, where the harness refuses an unapproved write. The second stops the change before any process can act on it, but needs a hook in every agent runtime. Reviewers' views are welcome.
+
+### `side_effects`
+
+Snapshot, call, snapshot. The engine snapshots the places allowed to change before and after each session (`scope: session`: after the setup hook, before the teardown hook) or each tool call (`scope: tool_call`), and compares the two. There are two observation points: the file tree under `observe.files.root` (a content hash per file; a symbolic link is recorded by its target and never followed; `ignore` globs are skipped) and the process table (`observe.processes`, unix `ps`; each entry is `proc:<command line>`). The network is not observable, and every report says so (`not_observable: ["network"]`).
+
+Each change is matched against `expected`: file globs match paths under the root, `proc:` globs match whole command lines (there `*` also crosses `/`). Every comparison is recorded as a `$agon_side_effects` event with the number of changes, expected and unexpected ones, the first 50 unexpected changes, and `expected_list_size`, the length of the expected list, so a list that only ever grows shows up over time.
+
+Advisory: the gate counts and records; it neither stops the session nor fails the run. The process table is the whole machine's, so unrelated processes that start or exit during the call count as unexpected: observe processes on a quiet host, or list the noise in `expected`.
+
+### `shadow_diff`
+
+Control and variant receive the same input and their outputs are compared field by field, schema first. `contract.fields` maps dotted field paths (globs: `*` per segment, `**` across segments; an exact field name wins, otherwise the first matching pattern in the order written) to `allow` (may differ; skipped), `disallow` (a difference counts) or `semantic` (may differ in form but not in meaning). Only `semantic` fields go to a judge. A field the contract does not name is `disallow` when it is inside the materiality boundary (`analysis.materiality.fields`) and `contract.default` otherwise. A field present on one side only is a difference; array elements are compared by index.
+
+Each disallowed difference gets a `diffHash` (the field and both values) and is charged against `budget.disallowedDiffs`, which has an `owner` and an `expiresAt`. After expiry the gate fails whatever the count. `exceptions` are hand-written, each naming a field and a diffHash with an owner and an expiry; a live exception covers exactly that difference. Approving the same disallowed diff twice (the same field and diffHash listed twice, a renewal included) is a config error: a difference approved repeatedly is a contract change, so set `contract.fields` for that field explicitly instead.
+
+`agon gate shadow-diff --control control.json --variant variant.json` runs the comparison and exits 1 over budget. The CLI has no judge, so it counts a difference in a `semantic` field as material; the library function `judgeSemanticDiffs` accepts any judge. Agon does not mirror traffic into control and variant itself: produce the two outputs, then compare them.
+
 ## Top level
 
 | field | type | required | default | description |
@@ -31,7 +60,7 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 | `analysis` | object |  | `{}` |  |
 | `export` | array of one of the variants below |  | `[]` |  |
 | `squad` | object |  |  | Squad credited with every variant in this config |
-| `policies` | array of object |  | `[]` |  |
+| `policies` | array of one of the variants below |  | `[]` |  |
 | `defaults` | object |  | `{}` |  |
 
 ## `target`
@@ -233,7 +262,7 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 
 | field | type | required | default | description |
 |---|---|---|---|---|
-| `fields` | array of string |  | `[]` | Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total") |
+| `fields` | array of string |  | `[]` | Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total"). The shadow_diff gate treats a difference in one of them as disallowed unless its contract says otherwise; a field outside the boundary is immaterial unless the contract disallows it |
 | `note` | string |  |  | Why the boundary sits where it does, e.g. the incident that moved a field in |
 
 ## `export[]` with `type: jsonl`
@@ -273,10 +302,11 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 |---|---|---|---|---|
 | `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
 
-## `policies[]`
+## `policies[]` with `kind: squad`
 
 | field | type | required | default | description |
 |---|---|---|---|---|
+| `kind` | `"squad"` |  | `"squad"` | The default kind: a squad governance policy (reallocate, pause, resume, kill, notify) |
 | `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
 | `name` | string |  |  |  |
 | `on` | `run.completed` \| `result.ready` \| `schedule` |  | `"result.ready"` |  |
@@ -287,6 +317,87 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 | `approval` | `auto` \| `human` |  |  | Defaults to human for pause/kill, auto otherwise |
 | `cooldown` | string matching `^\d+(ms|s|m|h|d)$` |  | `"24h"` |  |
 | `maxPerDay` | integer |  | `5` |  |
+
+## `policies[]` with `kind: protected_paths`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `kind` | `"protected_paths"` | yes |  |  |
+| `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
+| `name` | string |  |  |  |
+| `paths` | array of string | yes |  | Globs (`*`, `**`, `?`) of paths a less-sandboxed process will later read and act on: CI workflow files, MCP server definitions, deploy manifests, lockfiles. A diff that touches one is blocked unless an approval exists for that exact diff hash |
+| `approvals` | array of object |  | `[]` | Hand-written approvals, recorded against the diff hash, not the variant |
+| `requireManifest` | boolean |  | `true` | Block a variant registration that carries no diff manifest. With false the check cannot run and the registration is let through; the gate is then advisory |
+
+## `policies[] (protected_paths).approvals[]`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `diffHash` | string | yes |  | sha256 of the exact diff text the approval covers (`agon gate protected-paths --json` prints it) |
+| `approvedBy` | string | yes |  | Who approved the diff |
+| `approvedAt` | ISO-8601 timestamp |  |  |  |
+| `note` | string |  |  | Why the change to a protected path is acceptable |
+
+## `policies[]` with `kind: side_effects`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `kind` | `"side_effects"` | yes |  |  |
+| `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
+| `name` | string |  |  |  |
+| `scope` | `session` \| `tool_call` |  | `"session"` | Snapshot before and after each session, or before and after each tool call |
+| `observe` | object | yes |  | Where to look. The file tree and the process table are observation points; the network is not observable and is reported as such |
+| `expected` | array of string |  | `[]` | Globs of paths (and "proc:<command>" entries) allowed to change. The size of this list is recorded with every report so its growth can be measured |
+
+## `policies[] (side_effects).observe`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `files` | object |  |  | Snapshot the file tree under root: a content hash per file |
+| `processes` | boolean |  | `false` | Snapshot the process table (unix `ps`); entries are matched as "proc:<command>" |
+
+## `policies[] (side_effects).observe.files`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `root` | string | yes |  | Directory to snapshot, relative to the working directory |
+| `ignore` | array of string |  | `["**/node_modules/**","**/.git/**"]` | Globs never snapshotted |
+
+## `policies[]` with `kind: shadow_diff`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `kind` | `"shadow_diff"` | yes |  |  |
+| `id` | string matching `^[a-z0-9][a-z0-9_-]{0,62}$` | yes |  |  |
+| `name` | string |  |  |  |
+| `contract` | object |  | `{}` | Which output fields may differ between control and variant, and how |
+| `budget` | object | yes |  | A count of disallowed diffs with an expiry and a named owner |
+| `exceptions` | array of object |  | `[]` | Hand-written, each with an owner and an expiry; a repeated one is a config error |
+
+## `policies[] (shadow_diff).contract`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `fields` | map of `allow` \| `disallow` \| `semantic` |  | `{}` | Dotted field paths (globs with `*` per segment, `**` across segments) -> allow (skipped), disallow (diffed), semantic (a judge decides whether the difference is one of meaning) |
+| `default` | `allow` \| `disallow` |  | `"allow"` | Rule for fields the contract does not list and the materiality boundary does not name |
+
+## `policies[] (shadow_diff).budget`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `disallowedDiffs` | integer | yes |  | Disallowed diffs tolerated before the gate fails |
+| `expiresAt` | ISO-8601 timestamp | yes |  | After this the budget is void and the gate fails |
+| `owner` | string | yes |  | Who owns the budget, renews it or retires it |
+
+## `policies[] (shadow_diff).exceptions[]`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `field` | string | yes |  | Dotted path of the field the exception covers |
+| `diffHash` | string | yes |  | The diffHash the gate reported for the disallowed diff |
+| `owner` | string | yes |  | Who owns the exception and retires it |
+| `expiresAt` | ISO-8601 timestamp | yes |  | After this the exception no longer covers the diff |
+| `reason` | string |  |  |  |
 
 ## `defaults`
 

@@ -9,6 +9,7 @@ export const ErrorCodes = {
   ADAPTER: 'adapter_error',
   LLM: 'llm_error',
   EXPORT: 'export_error',
+  POLICY_BLOCKED: 'policy_blocked',
   INTERNAL: 'internal_error',
 } as const;
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
@@ -110,6 +111,14 @@ export class LlmError extends AgonError {
   constructor(message: string, options: AgonErrorOptions = {}) {
     super(ErrorCodes.LLM, message, { status: 502, ...options });
     this.name = 'LlmError';
+  }
+}
+
+/** A policy gate refused the operation (e.g. a diff touching a protected path without an approval). */
+export class PolicyBlockedError extends AgonError {
+  constructor(message: string, details?: unknown) {
+    super(ErrorCodes.POLICY_BLOCKED, message, { status: 403, details });
+    this.name = 'PolicyBlockedError';
   }
 }
 

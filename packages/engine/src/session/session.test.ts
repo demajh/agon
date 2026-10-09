@@ -498,3 +498,103 @@ describe('success criteria and metrics', () => {
     expect(metrics).toEqual({ scenario_success: 1, ttfp: 12.5, sat: 5 });
   });
 });
+
+describe('stall detection', () => {
+  const scroller: UserPolicy = () => ({
+    perception: 'Same page.',
+    thinking: 'Keep looking.',
+    feeling: 'confident',
+    progress: 'progress',
+    action: { type: 'scroll', direction: 'down' },
+  });
+
+  it('ends a session whose observation stops changing, with its own outcome and reason', async () => {
+    const { run, recorder } = setup(scroller, {
+      scenarios: [
+        {
+          id: 'first-project',
+          goal: 'Sign up and create a first project.',
+          success: 'event:project_created',
+          maxSteps: 12,
+          stallSteps: 3,
+        },
+      ],
+    });
+    const { session, steps } = await run();
+    expect(session.outcome).toBe('stalled');
+    expect(session.outcomeReason).toBe('no progress for 3 steps');
+    expect(session.status).toBe('finished');
+    expect(steps).toHaveLength(3);
+    expect(session.maxStepsSinceProgress).toBe(3);
+    expect(session.lastProgressStep).toBe(0);
+    expect(session.progressSteps).toEqual([]);
+    expect(session.metrics['scenario_success']).toBe(0);
+    expect(recorder.sessionsFinished[0]?.outcome).toBe('stalled');
+  });
+
+  it('is off by default and records the progress bookkeeping on every session', async () => {
+    const { run } = setup(happyUser);
+    const { session } = await run();
+    expect(session.outcome).toBe('success');
+    expect(session.progressSteps).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(session.lastProgressStep).toBe(6);
+    expect(session.maxStepsSinceProgress).toBe(0);
+    expect(SessionSchema.safeParse(session).success).toBe(true);
+  });
+
+  it('counts a new successful row as progress in events mode even when the observation is unchanged', async () => {
+    const lister: UserPolicy = (p) =>
+      p.refs.has('t2')
+        ? {
+            perception: 'Tools.',
+            thinking: 'Check the list again.',
+            feeling: 'neutral',
+            progress: 'none',
+            action: { type: 'tool_call', ref: 't2', arguments: {} },
+          }
+        : {
+            perception: '',
+            thinking: '',
+            feeling: 'confused',
+            progress: 'none',
+            action: { type: 'give_up', reason: 'no tools' },
+          };
+    const scenario = {
+      id: 'create-books',
+      goal: 'Create a project called Books.',
+      success: 'text:created project "Books"',
+      maxSteps: 6,
+      stallSteps: 2,
+    } as const;
+    const runWith = async (progress: 'observation' | 'events') => {
+      const config = agentTestConfig({ scenarios: [{ ...scenario, progress }] });
+      const personas = resolvePersonas(config);
+      const [plan] = planSessions(config, personas, {
+        runId: 'run_t2',
+        variants: ['control'],
+        seed: 1,
+        size: 1,
+        defaultModel: config.defaults.model,
+      });
+      return runSession(
+        { runId: 'run_t2', config, plan: plan!, variantSpec: config.target.variants['control']! },
+        {
+          llm: new FakeLlm(lister),
+          adapter: new FakeToolAdapter(),
+          recorder: new MemoryRecorder(),
+          logger,
+          cwd: process.cwd(),
+        },
+      );
+    };
+    // list_projects returns the same text every time: no observation change after the first call.
+    const byObservation = await runWith('observation');
+    expect(byObservation.session.outcome).toBe('stalled');
+    expect(byObservation.session.steps).toBe(3);
+    // ...but every call is a successful tool call, so in events mode the session keeps going.
+    const byEvents = await runWith('events');
+    expect(byEvents.session.outcome).toBe('max_steps');
+    expect(byEvents.session.progressSteps).toEqual([1, 2, 3, 4, 5]);
+    expect(byEvents.session.lastProgressStep).toBe(5);
+  });
+});

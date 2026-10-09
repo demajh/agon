@@ -21,7 +21,7 @@ export interface TraceOptions {
   limit?: number | undefined;
 }
 
-function readJsonl<T>(path: string, schema: z.ZodType<T>): T[] {
+export function readJsonl<T>(path: string, schema: z.ZodType<T>): T[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8')
     .split('\n')

@@ -363,6 +363,17 @@
                   "default": 30
                 },
                 "budgetUsd": { "type": "number", "exclusiveMinimum": 0, "default": 0.5 },
+                "stallSteps": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "description": "End the session with outcome \"stalled\" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck."
+                },
+                "progress": {
+                  "type": "string",
+                  "enum": ["observation", "events", "both"],
+                  "default": "observation",
+                  "description": "What the progress hash covers: \"observation\" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), \"events\" counts the analytics events captured so far (intercepted rows and successful tool calls), \"both\" treats a change in either as progress. Every action or tool call is a step."
+                },
                 "weight": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
                 "context": {
                   "type": "object",
@@ -1393,7 +1404,7 @@
           "status": { "type": "string", "enum": ["pending", "running", "finished", "failed"] },
           "outcome": {
             "type": "string",
-            "enum": ["success", "gave_up", "max_steps", "budget_exceeded", "error"]
+            "enum": ["success", "gave_up", "max_steps", "budget_exceeded", "error", "stalled"]
           },
           "outcomeReason": { "type": "string" },
           "steps": { "type": "integer", "minimum": 0, "default": 0 },
@@ -1428,6 +1439,21 @@
               }
             },
             "required": ["success", "satisfaction", "frustration", "confidence", "summary"]
+          },
+          "maxStepsSinceProgress": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Longest run of consecutive steps whose progress hash did not change"
+          },
+          "lastProgressStep": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Steps taken when progress was last observed; 0 when never"
+          },
+          "progressSteps": {
+            "type": "array",
+            "items": { "type": "integer", "exclusiveMinimum": 0 },
+            "description": "Step counts after which progress was observed, in order"
           },
           "startedAt": { "type": "string", "format": "date-time" },
           "finishedAt": { "type": "string", "format": "date-time" },

@@ -60,6 +60,7 @@ export const SESSION_OUTCOMES = [
   'max_steps',
   'budget_exceeded',
   'error',
+  'stalled',
 ] as const satisfies readonly SessionOutcome[];
 export const EVENT_SOURCES = [
   'intercepted',
@@ -213,6 +214,9 @@ export const sessions = pgTable(
     outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
     metrics: jsonb('metrics').$type<Record<string, number>>().notNull().default({}),
     judgement: jsonb('judgement').$type<Judgement>(),
+    maxStepsSinceProgress: integer('max_steps_since_progress'),
+    lastProgressStep: integer('last_progress_step'),
+    progressSteps: jsonb('progress_steps').$type<number[]>(),
     startedAt: timestamptz('started_at'),
     finishedAt: timestamptz('finished_at'),
     error: text('error'),

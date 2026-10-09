@@ -4,6 +4,7 @@ import { compareCommand } from './commands/compare.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
 import { schemaCommand } from './commands/schema.js';
+import { stallReportCommand } from './commands/stall-report.js';
 import { traceCommand } from './commands/trace.js';
 import { validateCommand } from './commands/validate.js';
 import { Output } from './output.js';
@@ -160,6 +161,16 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .option('--limit <n>', 'sessions to list', (v) => Number.parseInt(v, 10))
     .action((dir: string, session: string | undefined, opts: { limit?: number }) => {
       exit(traceCommand(output(), { dir, sessionId: session, limit: opts.limit }));
+    });
+
+  program
+    .command('stall-report')
+    .description(
+      'Distribution of the gaps between progress events across the sessions of a recorded run, for choosing stallSteps',
+    )
+    .argument('<dir>', 'run directory (…/agon-out/<runId>) or an output directory (newest run)')
+    .action((dir: string) => {
+      exit(stallReportCommand(output(), { dir }));
     });
 
   const personas = program.command('personas').description('Browse the built-in persona library');

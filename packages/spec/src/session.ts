@@ -105,6 +105,7 @@ export const SessionOutcomeSchema = z.enum([
   'max_steps',
   'budget_exceeded',
   'error',
+  'stalled',
 ]);
 export type SessionOutcome = z.infer<typeof SessionOutcomeSchema>;
 
@@ -138,6 +139,22 @@ export const SessionSchema = z.object({
     .default({})
     .describe('Metric values computed for this session'),
   judgement: JudgementSchema.optional(),
+  maxStepsSinceProgress: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe('Longest run of consecutive steps whose progress hash did not change'),
+  lastProgressStep: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe('Steps taken when progress was last observed; 0 when never'),
+  progressSteps: z
+    .array(z.number().int().positive())
+    .optional()
+    .describe('Step counts after which progress was observed, in order'),
   startedAt: TimestampSchema.optional(),
   finishedAt: TimestampSchema.optional(),
   error: z.string().optional(),

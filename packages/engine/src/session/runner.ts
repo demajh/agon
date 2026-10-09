@@ -35,6 +35,7 @@ import { createRng, hashSeed } from '../rng.js';
 import { runHook } from './hooks.js';
 import { judgeSession } from './judge.js';
 import { computeSessionMetrics } from './metrics.js';
+import { ProgressTracker, progressHash } from './progress.js';
 import { criterionMet } from './success.js';
 
 export interface SessionDeps {
@@ -140,6 +141,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   const rng = createRng(hashSeed(persona.seed, 'patience'));
   const kind = config.target.kind;
   const limits = perceptionLimitsFor(persona);
+  const progress = new ProgressTracker();
   let patience = initialPatience(persona.traits, patienceParams);
   const history: string[] = [];
   let lastAction: Action | undefined;
@@ -207,9 +209,17 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       );
       lastObservation = observation;
       await emit(adapterSession.drainEvents());
+      // The state observed now is the result of the previous step; the first observation only
+      // seeds the hash. Every action or tool call is a step, reads and writes alike.
+      progress.observe(progressHash(scenario.progress, observation, events), steps.length);
       if (criterionMet(scenario.success, observation, events)) {
         outcome = 'success';
         outcomeReason = 'success criterion met';
+        break;
+      }
+      if (progress.stalled(scenario.stallSteps)) {
+        outcome = 'stalled';
+        outcomeReason = `no progress for ${scenario.stallSteps} steps`;
         break;
       }
 
@@ -431,7 +441,10 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       );
       session.judgement = judgement;
       if (judgement.usage) addUsage(session, judgement.usage);
-      if (scenario.success.type === 'judge' && (outcome === undefined || outcome === 'max_steps')) {
+      if (
+        scenario.success.type === 'judge' &&
+        (outcome === undefined || outcome === 'max_steps' || outcome === 'stalled')
+      ) {
         outcome = judgement.success ? 'success' : (outcome ?? 'gave_up');
         outcomeReason = judgement.success
           ? `judge: ${judgement.summary}`
@@ -462,6 +475,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   if (outcomeReason !== undefined) session.outcomeReason = outcomeReason;
   session.status = session.status === 'failed' ? 'failed' : 'finished';
   session.finishedAt = nowIso();
+  Object.assign(session, progress.summary());
   session.metrics = computeSessionMetrics(config, session, events);
   await deps.recorder.sessionFinished(session);
   log.info({ outcome, steps: steps.length, costUsd: session.costUsd }, 'session finished');

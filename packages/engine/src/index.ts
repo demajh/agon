@@ -48,6 +48,15 @@ export { runHook, type HookOptions, type HookResult } from './session/hooks.js';
 export { criterionMet, urlMatches } from './session/success.js';
 export { computeSessionMetrics } from './session/metrics.js';
 export {
+  ProgressTracker,
+  countProgressEvents,
+  progressHash,
+  quantile,
+  stallGaps,
+  type StallGapInput,
+  type StallGapReport,
+} from './session/progress.js';
+export {
   judgeSession,
   buildJudgeMessage,
   JudgeOutputSchema,

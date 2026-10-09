@@ -851,6 +851,14 @@ export interface components {
                 maxSteps: number;
                 /** @default 0.5 */
                 budgetUsd: number;
+                /** @description End the session with outcome "stalled" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck. */
+                stallSteps?: number;
+                /**
+                 * @description What the progress hash covers: "observation" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), "events" counts the analytics events captured so far (intercepted rows and successful tool calls), "both" treats a change in either as progress. Every action or tool call is a step.
+                 * @default observation
+                 * @enum {string}
+                 */
+                progress: "observation" | "events" | "both";
                 /** @default 1 */
                 weight: number;
                 /**
@@ -1525,7 +1533,7 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "running" | "finished" | "failed";
             /** @enum {string} */
-            outcome?: "success" | "gave_up" | "max_steps" | "budget_exceeded" | "error";
+            outcome?: "success" | "gave_up" | "max_steps" | "budget_exceeded" | "error" | "stalled";
             outcomeReason?: string;
             /** @default 0 */
             steps: number;
@@ -1558,6 +1566,12 @@ export interface components {
                     cached: boolean;
                 };
             };
+            /** @description Longest run of consecutive steps whose progress hash did not change */
+            maxStepsSinceProgress?: number;
+            /** @description Steps taken when progress was last observed; 0 when never */
+            lastProgressStep?: number;
+            /** @description Step counts after which progress was observed, in order */
+            progressSteps?: number[];
             /** Format: date-time */
             startedAt?: string;
             /** Format: date-time */

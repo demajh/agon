@@ -363,6 +363,17 @@
                   "default": 30
                 },
                 "budgetUsd": { "type": "number", "exclusiveMinimum": 0, "default": 0.5 },
+                "stallSteps": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "description": "End the session with outcome \"stalled\" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck."
+                },
+                "progress": {
+                  "type": "string",
+                  "enum": ["observation", "events", "both"],
+                  "default": "observation",
+                  "description": "What the progress hash covers: \"observation\" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), \"events\" counts the analytics events captured so far (intercepted rows and successful tool calls), \"both\" treats a change in either as progress. Every action or tool call is a step."
+                },
                 "weight": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
                 "context": {
                   "type": "object",
@@ -643,6 +654,12 @@
                 "exclusiveMinimum": 0,
                 "default": 4,
                 "description": "Sessions run in parallel per target"
+              },
+              "timeCapMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 720000,
+                "description": "Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes."
               }
             },
             "default": {}
@@ -1115,7 +1132,11 @@
                       },
                       "pBeatControl": { "type": "number", "minimum": 0, "maximum": 1 },
                       "expectedLoss": { "type": "number", "minimum": 0 },
-                      "pValue": { "type": "number", "minimum": 0, "maximum": 1 }
+                      "pValue": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "zStat": {
+                        "type": "number",
+                        "description": "Test statistic of variant minus control (fixed and sequential methods)"
+                      }
                     },
                     "required": [
                       "variant",
@@ -1210,12 +1231,102 @@
               "planned": { "type": "integer", "minimum": 0, "default": 0 },
               "running": { "type": "integer", "minimum": 0, "default": 0 },
               "completed": { "type": "integer", "minimum": 0, "default": 0 },
-              "failed": { "type": "integer", "minimum": 0, "default": 0 }
+              "failed": { "type": "integer", "minimum": 0, "default": 0 },
+              "interrupted": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "description": "Sessions the run stopped before they reached an outcome (time cap)"
+              }
             },
             "default": {}
           },
           "costUsd": { "type": "number", "minimum": 0, "default": 0 },
           "resultId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "sampleHash": {
+            "type": "string",
+            "description": "Hash of the evaluation sample (population, personas, scenarios, seed, analysis settings, target identity; never the variants); the evaluation ledger is keyed by it"
+          },
+          "termination": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["completed", "time_cap_reached", "failed", "infra_aborted", "cancelled"],
+                "description": "completed: every planned session ran (the verdict decides); time_cap_reached: defaults.timeCapMs elapsed, partial result; failed: every executed session failed; infra_aborted: the adapter, target or model provider was unreachable or errored, not the product; cancelled: stopped on request"
+              },
+              "elapsedMs": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Wall clock since the run started"
+              },
+              "capMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "description": "The time cap in force (defaults.timeCapMs)"
+              },
+              "lastCompletedStage": {
+                "type": "string",
+                "enum": ["setup", "sessions", "analysis", "export"]
+              },
+              "sessionsExecuted": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Sessions that reached an outcome, successful or failed"
+              },
+              "sessionsPlanned": { "type": "integer", "minimum": 0 },
+              "failureCount": { "type": "integer", "minimum": 0, "default": 0 },
+              "partialDeltaManifest": {
+                "type": "object",
+                "properties": {
+                  "sessionsPerVariant": {
+                    "type": "object",
+                    "additionalProperties": { "type": "integer", "minimum": 0 },
+                    "description": "Sessions that reached an outcome, per variant"
+                  },
+                  "metricsComputed": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Metric ids computed on those sessions"
+                  },
+                  "exportsWritten": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Sinks that received the run, as \"<type>:<target>\""
+                  }
+                },
+                "required": ["sessionsPerVariant", "metricsComputed", "exportsWritten"],
+                "description": "Present when the run stopped early (time cap, cancellation)"
+              },
+              "firstFailure": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Session id, or the run id when the run itself failed"
+                  },
+                  "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Where it failed, e.g. \"adapter open\" or \"step 3 act\""
+                  },
+                  "message": { "type": "string" }
+                },
+                "required": ["id", "location", "message"],
+                "description": "Present when at least one session failed"
+              }
+            },
+            "required": [
+              "kind",
+              "elapsedMs",
+              "capMs",
+              "lastCompletedStage",
+              "sessionsExecuted",
+              "sessionsPlanned"
+            ],
+            "description": "How the run ended; set once it finished"
+          },
           "createdAt": { "type": "string", "format": "date-time" },
           "startedAt": { "type": "string", "format": "date-time" },
           "finishedAt": { "type": "string", "format": "date-time" },
@@ -1255,6 +1366,11 @@
             "type": "string",
             "pattern": "^[a-z0-9-]+\\/[A-Za-z0-9._:-]+$",
             "description": "Override defaults.model"
+          },
+          "timeCapMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Override defaults.timeCapMs"
           },
           "dryRun": {
             "type": "boolean",
@@ -1393,7 +1509,7 @@
           "status": { "type": "string", "enum": ["pending", "running", "finished", "failed"] },
           "outcome": {
             "type": "string",
-            "enum": ["success", "gave_up", "max_steps", "budget_exceeded", "error"]
+            "enum": ["success", "gave_up", "max_steps", "budget_exceeded", "error", "stalled"]
           },
           "outcomeReason": { "type": "string" },
           "steps": { "type": "integer", "minimum": 0, "default": 0 },
@@ -1428,6 +1544,21 @@
               }
             },
             "required": ["success", "satisfaction", "frustration", "confidence", "summary"]
+          },
+          "maxStepsSinceProgress": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Longest run of consecutive steps whose progress hash did not change"
+          },
+          "lastProgressStep": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Steps taken when progress was last observed; 0 when never"
+          },
+          "progressSteps": {
+            "type": "array",
+            "items": { "type": "integer", "exclusiveMinimum": 0 },
+            "description": "Step counts after which progress was observed, in order"
           },
           "startedAt": { "type": "string", "format": "date-time" },
           "finishedAt": { "type": "string", "format": "date-time" },

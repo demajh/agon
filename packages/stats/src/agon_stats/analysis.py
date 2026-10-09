@@ -123,6 +123,8 @@ class Comparison:
     p_value_fixed: float
     """Fixed-horizon p-value, always computed (not serialized for bayesian/sequential)."""
     p_value_sequential: float | None = None
+    z_stat: float = 0.0
+    """Test statistic of treatment minus control (z, or Welch's t for continuous iid data)."""
 
     def to_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -136,6 +138,7 @@ class Comparison:
         }
         if self.p_value is not None:
             out["pValue"] = _num(self.p_value, lo=0.0, hi=1.0)
+            out["zStat"] = _num(self.z_stat)
         return out
 
 
@@ -208,14 +211,23 @@ def two_proportion_z_test(x1: int, n1: int, x2: int, n2: int) -> tuple[float, fl
     return z, float(2.0 * sps.norm.sf(abs(z)))
 
 
+def welch_t(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Welch t-test of ``a`` against ``b``: ``(t, two-sided p)``; ``(0, 1)`` when a sample is
+    too small or neither has variance."""
+    if a.size < 2 or b.size < 2:
+        return 0.0, 1.0
+    if np.var(a, ddof=1) == 0.0 and np.var(b, ddof=1) == 0.0:
+        return 0.0, 1.0
+    test = sps.ttest_ind(a, b, equal_var=False)
+    t, p = float(test.statistic), float(test.pvalue)
+    if not (math.isfinite(t) and math.isfinite(p)):
+        return 0.0, 1.0
+    return t, p
+
+
 def welch_t_test(a: np.ndarray, b: np.ndarray) -> float:
     """Two-sided Welch t-test p-value; 1.0 when a sample is too small or has no variance."""
-    if a.size < 2 or b.size < 2:
-        return 1.0
-    if np.var(a, ddof=1) == 0.0 and np.var(b, ddof=1) == 0.0:
-        return 1.0
-    p = float(sps.ttest_ind(a, b, equal_var=False).pvalue)
-    return p if math.isfinite(p) else 1.0
+    return welch_t(a, b)[1]
 
 
 def normal_two_sided_p(delta: float, se: float) -> float:
@@ -615,14 +627,15 @@ def analyze_metric(
             se_diff_boot = float(np.std(diff_reps, ddof=1)) if diff_reps.size >= 2 else 0.0
             se_diff = max(se_diff_boot, se_diff_iid)
             p_fixed = normal_two_sided_p(mean_t - mean_c, se_diff)
+            z_stat = (mean_t - mean_c) / se_diff if se_diff > 0.0 else 0.0
         else:
             se_diff = se_diff_iid
             if binary and successes is not None:
-                p_fixed = two_proportion_z_test(
+                z_stat, p_fixed = two_proportion_z_test(
                     int(successes[t]), n_t, int(successes[control_idx]), n_c
-                )[1]
+                )
             else:
-                p_fixed = welch_t_test(y[vidx == t], y[vidx == control_idx])
+                z_stat, p_fixed = welch_t(y[vidx == t], y[vidx == control_idx])
 
         p_sequential: float | None = None
         if config.method == "sequential":
@@ -682,6 +695,7 @@ def analyze_metric(
                 p_value=p_value,
                 p_value_fixed=p_fixed,
                 p_value_sequential=p_sequential,
+                z_stat=float(z_stat),
             )
         )
 

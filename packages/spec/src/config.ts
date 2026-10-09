@@ -14,6 +14,8 @@ import { TargetSchema } from './target.js';
 
 export const AGON_CONFIG_VERSION = 1;
 export const DEFAULT_MODEL = 'anthropic/claude-sonnet-5-5';
+/** 12 minutes: a run that cannot finish inside a CI job's patience ends as a typed partial result. */
+export const DEFAULT_TIME_CAP_MS = 720_000;
 
 export const DefaultsSchema = z.object({
   model: ModelRefSchema.default(DEFAULT_MODEL).describe(
@@ -29,6 +31,14 @@ export const DefaultsSchema = z.object({
     .positive()
     .default(4)
     .describe('Sessions run in parallel per target'),
+  timeCapMs: z
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_TIME_CAP_MS)
+    .describe(
+      'Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes.',
+    ),
 });
 
 /** The full `agon.yaml` document, which is also the definition of an Environment. */

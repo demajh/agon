@@ -179,7 +179,7 @@ def test_analyze_fixed_method_adds_p_value_to_comparisons(tmp_path: Path) -> Non
         assert result["method"] == method
         for metric in result["metrics"]:
             for comparison in metric["comparisons"]:
-                assert set(comparison) == COMPARISON_KEYS | {"pValue"}
+                assert set(comparison) == COMPARISON_KEYS | {"pValue", "zStat"}
                 assert 0 <= comparison["pValue"] <= 1
 
 

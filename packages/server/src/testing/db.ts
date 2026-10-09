@@ -63,6 +63,7 @@ export const APP_TABLES = [
   'results',
   'decisions',
   'api_keys',
+  'evaluation_ledger',
 ];
 
 /** Empties every application table (test isolation only; production code never issues SQL here). */

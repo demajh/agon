@@ -16,7 +16,10 @@ Shape (camelCase; snake_case aliases are accepted for hand-written files)::
       "metrics": [ ...spec Metric objects... ],
       "draws": 20000,                       // optional: Monte Carlo posterior draws
       "bootstrapSamples": 1000,             // optional: cluster bootstrap replicates
-      "mixtureVarianceScale": 0.01          // optional: mSPRT tau^2 as a fraction of sigma^2
+      "mixtureVarianceScale": 0.01,         // optional: mSPRT tau^2 as a fraction of sigma^2
+      "trials": 1,                          // optional: M, distinct variants ever evaluated
+                                            //   against the sample (evaluation ledger count)
+      "sampleHash": "3f9a2c1d..."           // optional: the sample the ledger is keyed by
     }
 """
 
@@ -56,6 +59,9 @@ class AnalysisConfig:
     draws: int = 20_000
     bootstrap_samples: int = 1_000
     mixture_variance_scale: float = 0.01
+    trials: int = 1
+    """M: distinct variants ever evaluated against the sample, discarded ones included."""
+    sample_hash: str | None = None
 
 
 def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
@@ -94,6 +100,10 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
     change_category = _pick(obj, "changeCategory", "change_category")
     if change_category is not None and not isinstance(change_category, str):
         raise ConfigError("changeCategory must be a string")
+
+    sample_hash = _pick(obj, "sampleHash", "sample_hash")
+    if sample_hash is not None and (not isinstance(sample_hash, str) or not sample_hash):
+        raise ConfigError("sampleHash must be a non-empty string")
 
     metrics_raw = _pick(obj, "metrics", default=[])
     if not isinstance(metrics_raw, list):
@@ -135,6 +145,8 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
             _pick(obj, "mixtureVarianceScale", "mixture_variance_scale", default=0.01),
             "mixtureVarianceScale",
         ),
+        trials=_int(_pick(obj, "trials", default=1), "trials", minimum=1),
+        sample_hash=sample_hash,
     )
 
 

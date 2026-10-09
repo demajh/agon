@@ -56,6 +56,10 @@ export const SuccessCriterionInputSchema = z
   ])
   .transform((v): SuccessCriterion => (typeof v === 'string' ? parseSuccessShorthand(v) : v));
 
+/** What the progress hash covers; see `scenarios[].stallSteps`. */
+export const ProgressSignalSchema = z.enum(['observation', 'events', 'both']);
+export type ProgressSignal = z.infer<typeof ProgressSignalSchema>;
+
 export const ScenarioSchema = z.object({
   id: SlugSchema,
   goal: z.string().min(1).describe('What the user is trying to do, in their own words'),
@@ -63,6 +67,17 @@ export const ScenarioSchema = z.object({
   startPath: z.string().default('/'),
   maxSteps: z.number().int().positive().max(500).default(30),
   budgetUsd: z.number().positive().default(0.5),
+  stallSteps: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'End the session with outcome "stalled" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck.',
+    ),
+  progress: ProgressSignalSchema.default('observation').describe(
+    'What the progress hash covers: "observation" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), "events" counts the analytics events captured so far (intercepted rows and successful tool calls), "both" treats a change in either as progress. Every action or tool call is a step.',
+  ),
   weight: z.number().positive().default(1),
   context: z
     .record(z.string(), z.string())

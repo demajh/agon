@@ -851,6 +851,14 @@ export interface components {
                 maxSteps: number;
                 /** @default 0.5 */
                 budgetUsd: number;
+                /** @description End the session with outcome "stalled" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck. */
+                stallSteps?: number;
+                /**
+                 * @description What the progress hash covers: "observation" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), "events" counts the analytics events captured so far (intercepted rows and successful tool calls), "both" treats a change in either as progress. Every action or tool call is a step.
+                 * @default observation
+                 * @enum {string}
+                 */
+                progress: "observation" | "events" | "both";
                 /** @default 1 */
                 weight: number;
                 /**
@@ -1060,6 +1068,11 @@ export interface components {
                  * @default 4
                  */
                 maxConcurrency: number;
+                /**
+                 * @description Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes.
+                 * @default 720000
+                 */
+                timeCapMs: number;
             };
         };
         AgonEvent: {
@@ -1359,6 +1372,8 @@ export interface components {
                     pBeatControl: number;
                     expectedLoss: number;
                     pValue?: number;
+                    /** @description Test statistic of variant minus control (fixed and sequential methods) */
+                    zStat?: number;
                 }[];
                 varianceDecomposition?: {
                     persona: number;
@@ -1408,10 +1423,55 @@ export interface components {
                 completed: number;
                 /** @default 0 */
                 failed: number;
+                /**
+                 * @description Sessions the run stopped before they reached an outcome (time cap)
+                 * @default 0
+                 */
+                interrupted: number;
             };
             /** @default 0 */
             costUsd: number;
             resultId?: string;
+            /** @description Hash of the evaluation sample (population, personas, scenarios, seed, analysis settings, target identity; never the variants); the evaluation ledger is keyed by it */
+            sampleHash?: string;
+            /** @description How the run ended; set once it finished */
+            termination?: {
+                /**
+                 * @description completed: every planned session ran (the verdict decides); time_cap_reached: defaults.timeCapMs elapsed, partial result; failed: every executed session failed; infra_aborted: the adapter, target or model provider was unreachable or errored, not the product; cancelled: stopped on request
+                 * @enum {string}
+                 */
+                kind: "completed" | "time_cap_reached" | "failed" | "infra_aborted" | "cancelled";
+                /** @description Wall clock since the run started */
+                elapsedMs: number;
+                /** @description The time cap in force (defaults.timeCapMs) */
+                capMs: number;
+                /** @enum {string} */
+                lastCompletedStage: "setup" | "sessions" | "analysis" | "export";
+                /** @description Sessions that reached an outcome, successful or failed */
+                sessionsExecuted: number;
+                sessionsPlanned: number;
+                /** @default 0 */
+                failureCount: number;
+                /** @description Present when the run stopped early (time cap, cancellation) */
+                partialDeltaManifest?: {
+                    /** @description Sessions that reached an outcome, per variant */
+                    sessionsPerVariant: {
+                        [key: string]: number;
+                    };
+                    /** @description Metric ids computed on those sessions */
+                    metricsComputed: string[];
+                    /** @description Sinks that received the run, as "<type>:<target>" */
+                    exportsWritten: string[];
+                };
+                /** @description Present when at least one session failed */
+                firstFailure?: {
+                    /** @description Session id, or the run id when the run itself failed */
+                    id: string;
+                    /** @description Where it failed, e.g. "adapter open" or "step 3 act" */
+                    location: string;
+                    message: string;
+                };
+            };
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -1434,6 +1494,8 @@ export interface components {
             size?: number;
             /** @description Override defaults.model */
             model?: string;
+            /** @description Override defaults.timeCapMs */
+            timeCapMs?: number;
             /**
              * @description Plan sessions without executing them
              * @default false
@@ -1525,7 +1587,7 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "running" | "finished" | "failed";
             /** @enum {string} */
-            outcome?: "success" | "gave_up" | "max_steps" | "budget_exceeded" | "error";
+            outcome?: "success" | "gave_up" | "max_steps" | "budget_exceeded" | "error" | "stalled";
             outcomeReason?: string;
             /** @default 0 */
             steps: number;
@@ -1558,6 +1620,12 @@ export interface components {
                     cached: boolean;
                 };
             };
+            /** @description Longest run of consecutive steps whose progress hash did not change */
+            maxStepsSinceProgress?: number;
+            /** @description Steps taken when progress was last observed; 0 when never */
+            lastProgressStep?: number;
+            /** @description Step counts after which progress was observed, in order */
+            progressSteps?: number[];
             /** Format: date-time */
             startedAt?: string;
             /** Format: date-time */

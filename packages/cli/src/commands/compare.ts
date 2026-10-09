@@ -1,8 +1,20 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { RunSchema, isAgonError, type Analysis, type MetricResult, type Result } from '@agon/spec';
+import { variantKey } from '@agon/engine';
+import {
+  RunSchema,
+  countTrials,
+  isAgonError,
+  nowIso,
+  type Analysis,
+  type LedgerEntry,
+  type MetricResult,
+  type Result,
+  type Run,
+} from '@agon/spec';
 import { analyzeSessions, buildAnalysisConfig } from '@agon/stats-client';
 import { formatUsd, type Output } from '../output.js';
+import { ledgerForRunDir } from './ledger.js';
 import { resolveRunDir } from './trace.js';
 
 export interface CompareOptions {
@@ -13,6 +25,25 @@ export interface CompareOptions {
   profile?: string | undefined;
   category?: string | undefined;
   seed?: number | undefined;
+  ledgerDir?: string | undefined;
+}
+
+/** The ledger entry a verdict adds for the variant it names: promoted on ship, killed on kill. */
+export function verdictEntry(run: Run, result: Result): LedgerEntry | undefined {
+  const variant = result.decision.variant;
+  const spec = variant === undefined ? undefined : run.config.target.variants[variant];
+  if (run.sampleHash === undefined || variant === undefined || spec === undefined) return undefined;
+  if (result.decision.verdict !== 'ship' && result.decision.verdict !== 'kill') return undefined;
+  return {
+    sampleHash: run.sampleHash,
+    runId: run.id,
+    variant,
+    variantKey: variantKey(variant, spec),
+    role: variant === result.control ? 'control' : 'treatment',
+    event: result.decision.verdict === 'ship' ? 'promoted' : 'killed',
+    at: nowIso(),
+    note: result.id,
+  };
 }
 
 function pct(x: number): string {
@@ -72,6 +103,10 @@ export async function compareCommand(out: Output, options: CompareOptions): Prom
     const sessionsPath = join(runDir, 'sessions.jsonl');
     if (!existsSync(sessionsPath))
       throw new Error(`${sessionsPath} is missing; did the run record any sessions?`);
+    // The trial count lives with the data: M is every variant ever started against this sample.
+    const ledger = ledgerForRunDir(runDir, options.ledgerDir);
+    const entries = run.sampleHash === undefined ? [] : await ledger.list(run.sampleHash);
+    const trials = countTrials(entries);
     const analysis = buildAnalysisConfig(
       run.config,
       { id: run.id, seed: run.seed },
@@ -82,6 +117,8 @@ export async function compareCommand(out: Output, options: CompareOptions): Prom
         calibrationProfile: options.profile,
         changeCategory: options.category,
         seed: options.seed,
+        trials,
+        sampleHash: run.sampleHash,
       },
     );
     const result = await analyzeSessions({
@@ -89,11 +126,18 @@ export async function compareCommand(out: Output, options: CompareOptions): Prom
       analysis,
       outPath: join(runDir, 'result.json'),
     });
+    const entry = verdictEntry(run, result);
+    if (entry !== undefined) await ledger.append(entry);
     if (out.options.json) {
-      out.json({ runDir, result });
+      out.json({ runDir, sampleHash: run.sampleHash, trials, result });
       return 0;
     }
     printResult(out, result, runDir);
+    out.text(
+      run.sampleHash === undefined
+        ? `  trials: M=1 assumed; the run carries no sample hash (recorded before the ledger existed)`
+        : `  trials: M=${trials} distinct treatment variant(s) against sample ${run.sampleHash.slice(0, 12)} (${entries.length} ledger entries${entry ? `, ${entry.event} ${entry.variant} appended` : ''}; agon ledger ${runDir})`,
+    );
     out.text(out.dim(`  run cost: ${formatUsd(run.costUsd)}`));
     return 0;
   } catch (error) {

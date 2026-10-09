@@ -21,7 +21,7 @@ describeDb('createDbRecorder', () => {
     const run = makeRun(env.id, {
       status: 'running',
       startedAt: at(0),
-      counts: { planned: 2, running: 0, completed: 0, failed: 0 },
+      counts: { planned: 2, running: 0, completed: 0, failed: 0, interrupted: 0 },
     });
     await recorder.runStarted(run);
     expect(await runs.get(t.db, run.id)).toEqual(run);
@@ -57,7 +57,7 @@ describeDb('createDbRecorder', () => {
     const finishedRun = {
       ...run,
       status: 'completed' as const,
-      counts: { planned: 2, running: 0, completed: 2, failed: 0 },
+      counts: { planned: 2, running: 0, completed: 2, failed: 0, interrupted: 0 },
       costUsd: 0.016,
       finishedAt: at(20),
     };

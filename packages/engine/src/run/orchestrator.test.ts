@@ -20,7 +20,24 @@ describe('runExperiment', () => {
       { llm: new FakeLlm(happyUser), adapters: { web: adapter }, recorder, logger },
     );
     expect(outcome.run.status).toBe('completed');
-    expect(outcome.run.counts).toEqual({ planned: 6, running: 0, completed: 6, failed: 0 });
+    expect(outcome.run.counts).toEqual({
+      planned: 6,
+      running: 0,
+      completed: 6,
+      failed: 0,
+      interrupted: 0,
+    });
+    expect(outcome.termination).toMatchObject({
+      kind: 'completed',
+      capMs: 720_000,
+      lastCompletedStage: 'sessions',
+      sessionsExecuted: 6,
+      sessionsPlanned: 6,
+      failureCount: 0,
+    });
+    expect(outcome.termination.partialDeltaManifest).toBeUndefined();
+    expect(outcome.termination.firstFailure).toBeUndefined();
+    expect(outcome.run.termination).toEqual(outcome.termination);
     expect(outcome.sessions).toHaveLength(6);
     expect(outcome.sessions.filter((s) => s.variant === 'control')).toHaveLength(3);
     expect(outcome.sessions.filter((s) => s.variant === 'treatment')).toHaveLength(3);
@@ -51,6 +68,12 @@ describe('runExperiment', () => {
     expect(dry.plans.every((p) => p.variant === 'treatment')).toBe(true);
     expect(dry.sessions).toHaveLength(0);
     expect(dry.run.status).toBe('completed');
+    expect(dry.termination).toMatchObject({
+      kind: 'completed',
+      lastCompletedStage: 'setup',
+      sessionsExecuted: 0,
+      sessionsPlanned: 4,
+    });
 
     const broken = await runExperiment(
       config,
@@ -65,6 +88,17 @@ describe('runExperiment', () => {
     expect(broken.run.status).toBe('failed');
     expect(broken.run.counts.failed).toBe(4);
     expect(broken.run.error).toMatch(/every session failed/);
+    // The adapter could not open the target: not the product's fault.
+    expect(broken.termination).toMatchObject({
+      kind: 'infra_aborted',
+      sessionsExecuted: 4,
+      failureCount: 4,
+      firstFailure: {
+        id: 'ses_broken_00000',
+        location: 'adapter open',
+        message: 'browser failed to launch',
+      },
+    });
   });
 
   it('stops promptly when the signal fires and marks the run cancelled', async () => {
@@ -92,6 +126,8 @@ describe('runExperiment', () => {
     expect(cancelled?.status).toBe('failed');
     expect(cancelled?.outcome).toBe('error');
     expect(calls).toBeLessThan(10);
+    expect(outcome.termination.kind).toBe('cancelled');
+    expect(outcome.termination.partialDeltaManifest).toBeDefined();
   });
 
   it('rejects unknown variants and missing adapters up front', async () => {
@@ -108,5 +144,197 @@ describe('runExperiment', () => {
     await expect(runExperiment(config, {}, { ...deps, adapters: {} })).rejects.toThrow(
       /no adapter registered/,
     );
+  });
+
+  it('stops at the time cap, keeps the completed sessions and returns a typed partial outcome', async () => {
+    const config = testConfig({
+      population: { seed: 3, size: 6, personas: [{ use: 'eager' }], traitJitter: 0 },
+    });
+    // 20 ms per decision, six decisions per session: one session every 120 ms at concurrency 1.
+    const llm = new FakeLlm(happyUser);
+    const slow: typeof llm = Object.assign(llm, {
+      generateObject: async <T>(request: Parameters<typeof llm.generateObject<T>>[0]) => {
+        await new Promise((r) => setTimeout(r, 20));
+        return FakeLlm.prototype.generateObject.call(llm, request) as ReturnType<
+          typeof llm.generateObject<T>
+        >;
+      },
+    });
+    const recorder = new MemoryRecorder();
+    const outcome = await runExperiment(
+      config,
+      { runId: 'run_cap', concurrency: 1, timeCapMs: 300 },
+      { llm: slow, adapters: { web: new FakeAdapter(ledgerlySite) }, recorder, logger },
+    );
+    expect(outcome.run.status).toBe('completed');
+    expect(outcome.termination.kind).toBe('time_cap_reached');
+    expect(outcome.termination.capMs).toBe(300);
+    expect(outcome.termination.elapsedMs).toBeGreaterThanOrEqual(300);
+    expect(outcome.termination.sessionsPlanned).toBe(6);
+    expect(outcome.termination.sessionsExecuted).toBeGreaterThanOrEqual(1);
+    expect(outcome.termination.sessionsExecuted).toBeLessThan(6);
+    expect(outcome.termination.failureCount).toBe(0);
+    expect(outcome.run.counts.completed).toBe(outcome.termination.sessionsExecuted);
+    expect(outcome.run.counts.interrupted).toBeGreaterThanOrEqual(1);
+    expect(outcome.run.counts.interrupted + outcome.run.counts.completed).toBe(
+      outcome.sessions.length,
+    );
+    // Completed sessions are kept, with their outcomes; interrupted ones carry no outcome.
+    const completed = outcome.sessions.filter((s) => s.status === 'finished');
+    expect(completed.length).toBe(outcome.termination.sessionsExecuted);
+    expect(completed.every((s) => s.outcome === 'success')).toBe(true);
+    const interrupted = outcome.sessions.filter((s) => s.status === 'failed');
+    expect(interrupted.length).toBe(outcome.run.counts.interrupted);
+    for (const s of interrupted) {
+      expect(s.outcome).toBeUndefined();
+      expect(s.error).toBe('run time cap reached');
+      expect(s.outcomeReason).toBe('run time cap reached');
+    }
+    const manifest = outcome.termination.partialDeltaManifest;
+    expect(manifest).toBeDefined();
+    expect(Object.keys(manifest?.sessionsPerVariant ?? {}).sort()).toEqual([
+      'control',
+      'treatment',
+    ]);
+    expect(Object.values(manifest?.sessionsPerVariant ?? {}).reduce((a, b) => a + b, 0)).toBe(
+      completed.length,
+    );
+    expect(manifest?.metricsComputed).toContain('scenario_success');
+    expect(recorder.sessionsFinished).toHaveLength(outcome.sessions.length);
+    expect(RunSchema.safeParse(outcome.run).success).toBe(true);
+    expect(outcome.run.termination?.kind).toBe('time_cap_reached');
+  });
+
+  it('counts queue time against the cap: a run whose clock expired launches nothing', async () => {
+    const config = testConfig({ population: { seed: 3, size: 4, personas: [{ use: 'eager' }] } });
+    const outcome = await runExperiment(
+      config,
+      { runId: 'run_late', startedAt: new Date(Date.now() - 720_000).toISOString() },
+      {
+        llm: new FakeLlm(happyUser),
+        adapters: { web: new FakeAdapter(ledgerlySite) },
+        recorder: new MemoryRecorder(),
+        logger,
+      },
+    );
+    expect(outcome.termination).toMatchObject({
+      kind: 'time_cap_reached',
+      sessionsExecuted: 0,
+      sessionsPlanned: 4,
+      failureCount: 0,
+      partialDeltaManifest: {
+        sessionsPerVariant: { control: 0, treatment: 0 },
+        metricsComputed: [],
+        exportsWritten: [],
+      },
+    });
+    expect(outcome.sessions).toHaveLength(0);
+    expect(outcome.run.status).toBe('completed');
+    await expect(
+      runExperiment(
+        config,
+        { startedAt: 'yesterday' },
+        {
+          llm: new FakeLlm(happyUser),
+          adapters: { web: new FakeAdapter() },
+          recorder: new MemoryRecorder(),
+          logger,
+        },
+      ),
+    ).rejects.toThrow(/invalid startedAt/);
+  });
+
+  it('stamps the sample hash on the run and keeps the trial count in the ledger across runs', async () => {
+    const { FileLedger } = await import('../ledger/file-ledger.js');
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const ledger = new FileLedger(join(mkdtempSync(join(tmpdir(), 'agon-orch-ledger-')), 'ledger'));
+    const config = testConfig({ population: { seed: 3, size: 4, personas: [{ use: 'eager' }] } });
+    const deps = () => ({
+      llm: new FakeLlm(happyUser),
+      adapters: { web: new FakeAdapter(ledgerlySite) },
+      recorder: new MemoryRecorder(),
+      logger,
+      ledger,
+    });
+    const first = await runExperiment(config, { runId: 'run_l1' }, deps());
+    expect(first.sampleHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.run.sampleHash).toBe(first.sampleHash);
+    expect(first.trials).toBe(1); // one treatment against this sample so far
+    const entries = await ledger.list(first.sampleHash);
+    expect(entries.map((e) => [e.variant, e.role, e.event])).toEqual([
+      ['control', 'control', 'started'],
+      ['treatment', 'treatment', 'started'],
+      ['control', 'control', 'completed'],
+      ['treatment', 'treatment', 'completed'],
+    ]);
+    expect(entries[2]?.note).toBe('2 sessions, completed');
+
+    // Another variant against the same sample: same hash, M becomes 2.
+    const another = {
+      ...config,
+      target: {
+        ...config.target,
+        variants: {
+          ...config.target.variants,
+          v2: { url: 'http://v2.test', env: {}, headers: {} },
+        },
+      },
+    };
+    const second = await runExperiment(
+      another,
+      { runId: 'run_l2', variants: ['control', 'v2'] },
+      deps(),
+    );
+    expect(second.sampleHash).toBe(first.sampleHash);
+    expect(second.trials).toBe(2);
+    // The same variant again is not a new trial; a redeploy under the same name is.
+    expect((await runExperiment(config, { runId: 'run_l3' }, deps())).trials).toBe(2);
+    const redeployed = {
+      ...config,
+      target: {
+        ...config.target,
+        variants: {
+          ...config.target.variants,
+          treatment: { url: 'http://treatment.test', gitRef: 'v2', env: {}, headers: {} },
+        },
+      },
+    };
+    expect((await runExperiment(redeployed, { runId: 'run_l4' }, deps())).trials).toBe(3);
+
+    // A run cut by the cap still counted at start and discards its variants.
+    const capped = await runExperiment(
+      another,
+      {
+        runId: 'run_l5',
+        variants: ['control', 'v2'],
+        startedAt: new Date(Date.now() - 720_000).toISOString(),
+      },
+      deps(),
+    );
+    expect(capped.termination.kind).toBe('time_cap_reached');
+    const after = await ledger.list(first.sampleHash);
+    expect(after.filter((e) => e.runId === 'run_l5').map((e) => e.event)).toEqual([
+      'started',
+      'started',
+      'discarded',
+      'discarded',
+    ]);
+    expect(capped.trials).toBe(3);
+
+    // A different seed is a fresh holdout: new hash, count starts again.
+    const fresh = await runExperiment(config, { runId: 'run_l6', seed: 99 }, deps());
+    expect(fresh.sampleHash).not.toBe(first.sampleHash);
+    expect(fresh.trials).toBe(1);
+
+    // Without a ledger only this run's variants count.
+    const noLedger = await runExperiment(
+      another,
+      { runId: 'run_l7' },
+      { ...deps(), ledger: undefined },
+    );
+    expect(noLedger.trials).toBe(2);
+    expect(RunSchema.safeParse(noLedger.run).success).toBe(true);
   });
 });

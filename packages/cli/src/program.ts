@@ -3,7 +3,9 @@ import { personasListCommand, personasShowCommand } from './commands/personas.js
 import { compareCommand } from './commands/compare.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
+import { ledgerCommand } from './commands/ledger.js';
 import { schemaCommand } from './commands/schema.js';
+import { stallReportCommand } from './commands/stall-report.js';
 import { traceCommand } from './commands/trace.js';
 import { validateCommand } from './commands/validate.js';
 import { Output } from './output.js';
@@ -67,7 +69,16 @@ export function createProgram(deps: ProgramDeps = {}): Command {
       'sessions in parallel (default defaults.maxConcurrency)',
       (v) => Number.parseInt(v, 10),
     )
+    .option(
+      '--time-cap-ms <n>',
+      'wall-clock cap for the whole run in ms (default defaults.timeCapMs, 720000); exit code 3 when reached',
+      (v) => Number.parseInt(v, 10),
+    )
     .option('-o, --out <dir>', 'output directory (default ./agon-out or $AGON_OUT_DIR)')
+    .option(
+      '--ledger-dir <dir>',
+      'evaluation ledger directory (default <parent of out>/.agon/ledger)',
+    )
     .option('--llm-mode <mode>', 'live | record | replay | off (default $AGON_LLM_MODE or live)')
     .option('--llm-cache <dir>', 'record/replay cache directory (default .agon/llm-cache)')
     .option('--headful', 'show the browser while it runs', false)
@@ -82,7 +93,9 @@ export function createProgram(deps: ProgramDeps = {}): Command {
           size?: number;
           model?: string;
           concurrency?: number;
+          timeCapMs?: number;
           out?: string;
+          ledgerDir?: string;
           llmMode?: string;
           llmCache?: string;
           headful: boolean;
@@ -98,7 +111,9 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             size: opts.size,
             model: opts.model,
             concurrency: opts.concurrency,
+            timeCapMs: opts.timeCapMs,
             out: opts.out,
+            ledgerDir: opts.ledgerDir,
             llmMode: opts.llmMode,
             llmCacheDir: opts.llmCache,
             headful: opts.headful,
@@ -126,6 +141,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .option('--seed <n>', 'Monte Carlo / bootstrap seed (default the run seed)', (v) =>
       Number.parseInt(v, 10),
     )
+    .option('--ledger-dir <dir>', 'evaluation ledger directory (default next to the run output)')
     .action(
       async (
         dir: string,
@@ -136,6 +152,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
           profile?: string;
           category?: string;
           seed?: number;
+          ledgerDir?: string;
         },
       ) => {
         exit(
@@ -147,10 +164,25 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             profile: opts.profile,
             category: opts.category,
             seed: opts.seed,
+            ledgerDir: opts.ledgerDir,
           }),
         );
       },
     );
+
+  program
+    .command('ledger')
+    .description(
+      'Print the evaluation ledger of a run or sample hash: how many distinct variants were ever evaluated against that sample (M), and every entry',
+    )
+    .argument('<target>', 'run directory, output directory (newest run), or a sample hash prefix')
+    .option(
+      '--ledger-dir <dir>',
+      'evaluation ledger directory (default next to the run output, or .agon/ledger)',
+    )
+    .action(async (target: string, opts: { ledgerDir?: string }) => {
+      exit(await ledgerCommand(output(), { target, ledgerDir: opts.ledgerDir }));
+    });
 
   program
     .command('trace')
@@ -160,6 +192,16 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .option('--limit <n>', 'sessions to list', (v) => Number.parseInt(v, 10))
     .action((dir: string, session: string | undefined, opts: { limit?: number }) => {
       exit(traceCommand(output(), { dir, sessionId: session, limit: opts.limit }));
+    });
+
+  program
+    .command('stall-report')
+    .description(
+      'Distribution of the gaps between progress events across the sessions of a recorded run, for choosing stallSteps',
+    )
+    .argument('<dir>', 'run directory (…/agon-out/<runId>) or an output directory (newest run)')
+    .action((dir: string) => {
+      exit(stallReportCommand(output(), { dir }));
     });
 
   const personas = program.command('personas').description('Browse the built-in persona library');

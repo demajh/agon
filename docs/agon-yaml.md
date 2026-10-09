@@ -6,6 +6,16 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 
 `scenarios[].success` accepts the shorthand strings `event:<name>`, `url:<pattern>`, `text:<needle>` or `judge`, or the object form documented below.
 
+## Stopping rules
+
+A session has three hard stops, all per scenario: `maxSteps`, `budgetUsd` and `stallSteps`. Each ends the session with its own outcome (`max_steps`, `budget_exceeded`, `stalled`), so the three are never confused in the analysis.
+
+`stallSteps` is stall detection. Every action or tool call is a step; after each step the engine hashes what `progress` declares as progress (`observation`: the adapter observation, that is URL plus page text and controls for web targets and the tool catalog plus the last tool result for mcp targets; `events`: the number of intercepted analytics events and successful tool calls captured so far, "a new row landed"; `both`: either). The session keeps a `stepsSinceProgress` counter that resets to 0 whenever the hash changes; when it reaches `stallSteps` the session ends with outcome `stalled` and the reason "no progress for N steps". Every session records `maxStepsSinceProgress`, `lastProgressStep` and `progressSteps`; `agon stall-report <run>` prints the distribution of gaps between progress events so the threshold can be chosen from data.
+
+Recommended value: about 60 for edit-heavy tasks. Measured on 820 real coding-agent sessions, the gaps between writes had p50 6, p90 21, p95 32, p99 58 and max 109 steps, so a threshold of 10 would end a quarter of real stretches. Leave `stallSteps` unset (the default, detection off) for scenarios that poll: a poller that correctly finds nothing new is not stuck, and its observation never changes.
+
+The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, twelve minutes), counted from the moment the run starts: queue time, cold start, adapter setup and session hooks are inside it. When it is reached no new session starts, sessions in flight stop between steps and are recorded without an outcome, and the run ends as a typed partial result (`termination.kind = time_cap_reached`, exit code 3) rather than a failure. See [run-termination.md](run-termination.md).
+
 ## Top level
 
 | field | type | required | default | description |
@@ -138,6 +148,8 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 | `startPath` | string |  | `"/"` |  |
 | `maxSteps` | integer |  | `30` |  |
 | `budgetUsd` | number |  | `0.5` |  |
+| `stallSteps` | integer |  |  | End the session with outcome "stalled" once this many consecutive steps passed without the progress hash changing. Unset (the default) disables stall detection. About 60 suits edit-heavy tasks: on 820 real coding-agent sessions the gaps between writes had p50 6, p90 21, p95 32, p99 58, max 109, so 10 would end a quarter of real stretches. Leave it unset for pollers: a poller that correctly finds nothing new is not stuck. |
+| `progress` | `observation` \| `events` \| `both` |  | `"observation"` | What the progress hash covers: "observation" hashes the adapter observation after each step (URL plus page text and controls for web, tool catalog plus last tool result for mcp), "events" counts the analytics events captured so far (intercepted rows and successful tool calls), "both" treats a change in either as progress. Every action or tool call is a step. |
 | `weight` | number |  | `1` |  |
 | `context` | map of string |  | `{}` | Extra facts the user knows, e.g. a promo code or a colleague's referral |
 
@@ -276,3 +288,4 @@ Strings may contain `${ENV_VAR}` or `${ENV_VAR:-default}`; missing variables wit
 | `judgeModel` | string matching `^[a-z0-9-]+\/[A-Za-z0-9._:-]+$` |  |  | Model for the independent judge; defaults to model |
 | `temperature` | number |  | `0.7` |  |
 | `maxConcurrency` | integer |  | `4` | Sessions run in parallel per target |
+| `timeCapMs` | integer |  | `720000` | Wall-clock cap for the whole run in milliseconds, counted from the moment the run starts (queue time, cold start, adapter setup and session hooks all count). When reached, no new session starts, sessions in flight stop between steps, and the run ends with termination.kind = time_cap_reached: a partial result, not a failure. Default 12 minutes. |

@@ -190,13 +190,19 @@ export const getScreenshotRoute = createRoute({
 /** Applies the request overrides to the config snapshot a run is created from. */
 export function snapshotConfig(
   config: AgonConfig,
-  request: { size?: number | undefined; model?: string | undefined },
+  request: {
+    size?: number | undefined;
+    model?: string | undefined;
+    timeCapMs?: number | undefined;
+  },
 ): AgonConfig {
   let out = config;
   if (request.size !== undefined)
     out = { ...out, population: { ...out.population, size: request.size } };
   if (request.model !== undefined)
     out = { ...out, defaults: { ...out.defaults, model: request.model } };
+  if (request.timeCapMs !== undefined)
+    out = { ...out, defaults: { ...out.defaults, timeCapMs: request.timeCapMs } };
   return out;
 }
 

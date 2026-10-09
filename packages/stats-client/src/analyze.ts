@@ -33,6 +33,9 @@ export interface AnalysisConfig {
   seed: number;
   metrics: Metric[];
   changeCategory?: string;
+  /** M from the evaluation ledger: distinct variants ever evaluated against the sample. */
+  trials?: number;
+  sampleHash?: string;
 }
 
 export interface AnalysisOverrides {
@@ -42,6 +45,8 @@ export interface AnalysisOverrides {
   calibrationProfile?: string | undefined;
   changeCategory?: string | undefined;
   seed?: number | undefined;
+  trials?: number | undefined;
+  sampleHash?: string | undefined;
 }
 
 /** Derives the analysis config from an agon.yaml and a run's id/seed, with CLI/API overrides. */
@@ -68,6 +73,8 @@ export function buildAnalysisConfig(
     seed: overrides.seed ?? run.seed,
     metrics: config.metrics,
     ...(overrides.changeCategory === undefined ? {} : { changeCategory: overrides.changeCategory }),
+    ...(overrides.trials === undefined ? {} : { trials: overrides.trials }),
+    ...(overrides.sampleHash === undefined ? {} : { sampleHash: overrides.sampleHash }),
   };
 }
 

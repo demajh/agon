@@ -1,5 +1,5 @@
 import { NotFoundError, RunCountsSchema, RunSchema, newId, nowIso } from '@agon/spec';
-import type { AgonConfig, Run, RunStatus } from '@agon/spec';
+import type { AgonConfig, Run, RunStatus, RunTermination } from '@agon/spec';
 import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 import type { Db } from '../client.js';
 import { guard } from '../errors.js';
@@ -63,6 +63,8 @@ export function toRun(row: RunRow): Run {
       counts: row.counts,
       costUsd: row.costUsd,
       resultId: row.resultId ?? undefined,
+      sampleHash: row.sampleHash ?? undefined,
+      termination: row.termination ?? undefined,
       createdAt: toIso(row.createdAt),
       startedAt: toIsoOrUndefined(row.startedAt),
       finishedAt: toIsoOrUndefined(row.finishedAt),
@@ -84,6 +86,8 @@ function toRow(run: Run) {
     counts: run.counts,
     costUsd: run.costUsd,
     resultId: run.resultId ?? null,
+    sampleHash: run.sampleHash ?? null,
+    termination: run.termination ?? null,
     createdAt: toDate(run.createdAt),
     startedAt: toDateOrNull(run.startedAt),
     finishedAt: toDateOrNull(run.finishedAt),
@@ -128,6 +132,8 @@ export async function upsert(db: Db, run: Run): Promise<Run> {
           counts: row.counts,
           costUsd: row.costUsd,
           resultId: row.resultId,
+          sampleHash: row.sampleHash,
+          termination: row.termination,
           startedAt: row.startedAt,
           finishedAt: row.finishedAt,
           error: row.error,
@@ -230,4 +236,13 @@ export async function addCost(db: Db, id: string, usd: number): Promise<Run> {
 
 export async function setResult(db: Db, id: string, resultId: string): Promise<Run> {
   return updateOne(db, id, { resultId });
+}
+
+/** Records how the run ended, or updates its last completed stage after analysis and export. */
+export async function setTermination(
+  db: Db,
+  id: string,
+  termination: RunTermination,
+): Promise<Run> {
+  return updateOne(db, id, { termination });
 }

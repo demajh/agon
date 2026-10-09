@@ -124,7 +124,13 @@ describe('runExperiment against the live demo app through the Playwright adapter
     );
 
     expect(outcome.run.status).toBe('completed');
-    expect(outcome.run.counts).toEqual({ planned: SIZE, running: 0, completed: SIZE, failed: 0 });
+    expect(outcome.run.counts).toEqual({
+      planned: SIZE,
+      running: 0,
+      completed: SIZE,
+      failed: 0,
+      interrupted: 0,
+    });
     expect(outcome.sessions).toHaveLength(SIZE);
     expect(byVariant('control')).toHaveLength(SIZE / 2);
     expect(byVariant('treatment')).toHaveLength(SIZE / 2);

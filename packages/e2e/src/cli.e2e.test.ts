@@ -125,7 +125,14 @@ describe('agon run → trace → compare on the live demo app', () => {
 
     const run = RunSchema.parse(JSON.parse(readFileSync(join(runDir, JSONL_FILES.run), 'utf8')));
     expect(run.status).toBe('completed');
-    expect(run.counts).toEqual({ planned: SIZE, running: 0, completed: SIZE, failed: 0 });
+    expect(run.counts).toEqual({
+      planned: SIZE,
+      running: 0,
+      completed: SIZE,
+      failed: 0,
+      interrupted: 0,
+    });
+    expect(run.termination).toMatchObject({ kind: 'completed', lastCompletedStage: 'export' });
     expect(run.config.target.variants['control']?.url).toBe(control.url);
     expect(run.config.target.variants['treatment']?.url).toBe(treatment.url);
 

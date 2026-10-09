@@ -32,7 +32,13 @@ describeDb('runs', () => {
         createdAt: at(0),
       }),
     );
-    expect(created.counts).toEqual({ planned: 0, running: 0, completed: 0, failed: 0 });
+    expect(created.counts).toEqual({
+      planned: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+      interrupted: 0,
+    });
     expect(await runs.get(t.db, created.id)).toEqual(created);
     await expect(runs.get(t.db, 'run_missing')).rejects.toBeInstanceOf(NotFoundError);
     await expect(runs.create(t.db, makeRun('env_missing'))).rejects.toBeInstanceOf(NotFoundError);
@@ -48,7 +54,7 @@ describeDb('runs', () => {
     const run = makeRun(await env(), {
       status: 'running',
       startedAt: at(1),
-      counts: { planned: 4, running: 2, completed: 1, failed: 1 },
+      counts: { planned: 4, running: 2, completed: 1, failed: 1, interrupted: 0 },
       costUsd: 0.25,
     });
     expect(await runs.upsert(t.db, run)).toEqual(run);
@@ -116,7 +122,13 @@ describeDb('runs', () => {
     );
     expect((await runs.get(t.db, run.id)).counts.running).toBe(10);
     const after = await runs.bumpCounts(t.db, run.id, { running: -1, completed: 1 });
-    expect(after.counts).toEqual({ planned: 4, running: 9, completed: 1, failed: 0 });
+    expect(after.counts).toEqual({
+      planned: 4,
+      running: 9,
+      completed: 1,
+      failed: 0,
+      interrupted: 0,
+    });
     expect((await runs.bumpCounts(t.db, run.id, { failed: -5 })).counts.failed).toBe(0);
     expect(await runs.bumpCounts(t.db, run.id, {})).toEqual(await runs.get(t.db, run.id));
   });

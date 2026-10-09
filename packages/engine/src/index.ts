@@ -48,6 +48,15 @@ export { runHook, type HookOptions, type HookResult } from './session/hooks.js';
 export { criterionMet, urlMatches } from './session/success.js';
 export { computeSessionMetrics } from './session/metrics.js';
 export {
+  ProgressTracker,
+  countProgressEvents,
+  progressHash,
+  quantile,
+  stallGaps,
+  type StallGapInput,
+  type StallGapReport,
+} from './session/progress.js';
+export {
   judgeSession,
   buildJudgeMessage,
   JudgeOutputSchema,
@@ -56,7 +65,10 @@ export {
 } from './session/judge.js';
 export {
   runSession,
+  isTimeCapStop,
+  TIME_CAP_STOP_REASON,
   type SessionDeps,
+  type SessionFailure,
   type SessionInput,
   type SessionResult,
 } from './session/runner.js';
@@ -66,3 +78,11 @@ export {
   type RunOptions,
   type RunOutcome,
 } from './run/orchestrator.js';
+export {
+  canonicalJson,
+  sampleHash,
+  sampleIdentity,
+  variantKey,
+  type SampleIdentity,
+} from './ledger/sample-hash.js';
+export { DEFAULT_LEDGER_DIR, FileLedger } from './ledger/file-ledger.js';

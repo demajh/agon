@@ -10,12 +10,21 @@ Rules, evaluated on the primary metric:
   by the number of treatments) *and* its lift points in the metric's good direction; the
   candidate with the highest P(beat control) wins. ``kill`` when every treatment is significantly
   worse than control; otherwise ``inconclusive``.
+
+The trial count M (``trials`` in the analysis config, read from the evaluation ledger: every
+variant ever evaluated against the same sample, discarded ones included) corrects for the
+search across variants. For ``fixed`` a ship candidate must also clear the quantile of the max
+of M standard normals, ``z > Phi^-1((1 - alpha)^(1/M))`` (1.645 at M=1, 3.283 at M=100 for
+alpha 0.05), so M=1 leaves the existing rule in charge. ``bayesian`` and ``sequential`` report
+M and warn that P(best) is not corrected for it. Every rationale states M and the sample hash.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
+
+from scipy import stats as sps
 
 from agon_stats.analysis import Comparison, MetricAnalysis
 from agon_stats.config import AnalysisConfig
@@ -37,7 +46,33 @@ class Decision:
         return out
 
 
+def max_quantile_bar(alpha: float, trials: int) -> float:
+    """``Phi^-1((1 - alpha)^(1/M))``: the one-sided bar the best of M null z-statistics clears
+    with probability alpha."""
+    m = max(1, int(trials))
+    return float(sps.norm.ppf((1.0 - alpha) ** (1.0 / m)))
+
+
 def decide(primary: MetricAnalysis, config: AnalysisConfig, control: str) -> Decision:
+    decision = _decide(primary, config, control)
+    return replace(decision, rationale=f"{decision.rationale} {_trials_note(config)}")
+
+
+def _trials_note(config: AnalysisConfig) -> str:
+    m = max(1, config.trials)
+    sample = (
+        f"sample {config.sample_hash[:12]}"
+        if config.sample_hash
+        else "sample unknown (no evaluation ledger supplied; round M up when unsure)"
+    )
+    head = f"Trials: M={m} distinct variant(s) evaluated against {sample};"
+    if config.method == "fixed":
+        bar = max_quantile_bar(config.alpha, m)
+        return f"{head} ship bar z > {bar:.3f} = Phi^-1((1-{config.alpha:g})^(1/{m}))."
+    return f"{head} P(best) is not corrected for the number of trials searched."
+
+
+def _decide(primary: MetricAnalysis, config: AnalysisConfig, control: str) -> Decision:
     metric_id = primary.metric.id
     minimum = config.min_sessions_per_variant
     short = [(s.variant, s.sessions) for s in primary.variants if s.sessions < minimum]
@@ -109,6 +144,8 @@ def _frequentist_verdict(
         if len(treatments) > 1
         else ""
     )
+    trials = max(1, config.trials)
+    bar = max_quantile_bar(config.alpha, trials) if config.method == "fixed" else None
 
     def good(c: Comparison) -> bool:
         return c.lift > 0.0 if direction == "increase" else c.lift < 0.0
@@ -116,18 +153,26 @@ def _frequentist_verdict(
     def significant(c: Comparison) -> bool:
         return c.p_value is not None and c.p_value < alpha
 
+    def z_good(c: Comparison) -> float:
+        return c.z_stat if direction == "increase" else -c.z_stat
+
+    def clears_bar(c: Comparison) -> bool:
+        return bar is None or z_good(c) > bar
+
     summary = "; ".join(
         f"{c.variant} p={_p(c.p_value)}, lift {_pct(c.lift)} (95% {_interval(c.lift_ci95)}), "
         f"P(beat {control})={c.p_beat_control:.3f}"
         for c in treatments
     )
-    winners = [c for c in treatments if significant(c) and good(c)]
+    nominal = [c for c in treatments if significant(c) and good(c)]
+    winners = [c for c in nominal if clears_bar(c)]
     if winners:
         top = max(winners, key=lambda c: c.p_beat_control)
+        bar_note = f", z={z_good(top):.2f} > {bar:.3f} ({trials}-trial bar)" if bar else ""
         return Decision(
             "ship",
             f"{top.variant} beats {control} on {metric_id}: {label} p={_p(top.p_value)} < "
-            f"alpha={alpha:.4g}{correction}, lift {_pct(top.lift)} "
+            f"alpha={alpha:.4g}{correction}{bar_note}, lift {_pct(top.lift)} "
             f"(95% {_interval(top.lift_ci95)}), P(beat {control})={top.p_beat_control:.3f}.",
             top.variant,
         )
@@ -138,6 +183,13 @@ def _frequentist_verdict(
             f"Every treatment is significantly worse than {control} on {metric_id} "
             f"({label}, alpha={alpha:.4g}{correction}): {summary}.",
             top.variant,
+        )
+    if nominal and bar is not None:
+        held = "; ".join(f"{c.variant} z={z_good(c):.2f}" for c in nominal)
+        return Decision(
+            "inconclusive",
+            f"Nominally significant but below the {trials}-trial bar {bar:.3f} on {metric_id} "
+            f"({label}, alpha={alpha:.4g}{correction}): {held}; {summary}.",
         )
     return Decision(
         "inconclusive",

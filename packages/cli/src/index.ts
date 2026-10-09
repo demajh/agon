@@ -11,6 +11,18 @@ export {
   type RunCommandDeps,
   type VariantSummary,
 } from './commands/run.js';
-export { traceCommand, resolveRunDir, type TraceOptions } from './commands/trace.js';
+export { traceCommand, resolveRunDir, readJsonl, type TraceOptions } from './commands/trace.js';
+export { stallReportCommand, type StallReportOptions } from './commands/stall-report.js';
+export {
+  ledgerCommand,
+  ledgerDirFor,
+  ledgerForRunDir,
+  type LedgerOptions,
+} from './commands/ledger.js';
 export { CliRecorder, type CliRecorderOptions } from './recorder.js';
-export { compareCommand, printResult, type CompareOptions } from './commands/compare.js';
+export {
+  compareCommand,
+  printResult,
+  verdictEntry,
+  type CompareOptions,
+} from './commands/compare.js';

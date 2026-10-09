@@ -131,6 +131,7 @@ describe('prompts', () => {
         startPath: '/',
         maxSteps: 10,
         budgetUsd: 1,
+        progress: 'observation',
         weight: 1,
         context: { promo: 'SPRING' },
       },

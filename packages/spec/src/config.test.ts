@@ -2,10 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ConfigError,
+  RunCountsSchema,
+  RunTerminationKindSchema,
+  RunTerminationSchema,
   agonConfigJsonSchema,
   controlVariant,
   parseAgonConfig,
   substituteEnv,
+  terminationExitCode,
 } from './index.js';
 
 const example = readFileSync(new URL('./__fixtures__/agon.example.yaml', import.meta.url), 'utf8');
@@ -29,6 +33,9 @@ describe('parseAgonConfig', () => {
     expect(cfg.scenarios[0]?.success).toEqual({ type: 'event', name: 'project_created' });
     expect(cfg.defaults.model).toBe('anthropic/claude-sonnet-5-5');
     expect(cfg.defaults.maxConcurrency).toBe(4);
+    expect(cfg.defaults.timeCapMs).toBe(720_000);
+    expect(cfg.scenarios[0]?.stallSteps).toBeUndefined();
+    expect(cfg.scenarios[0]?.progress).toBe('observation');
     expect(cfg.personas[0]?.traits.domainFamiliarity).toBe(0.5);
     expect(cfg.personas[0]?.device).toBe('desktop');
     expect(cfg.export[0]).toMatchObject({ type: 'posthog', projectApiKey: 'phc_test' });
@@ -147,5 +154,42 @@ describe('agonConfigJsonSchema', () => {
       ]),
     );
     expect(JSON.stringify(schema)).toContain('event:<name>');
+  });
+});
+
+describe('run termination', () => {
+  it('maps every termination kind to a distinct CLI exit code, with completed at 0', () => {
+    const codes = RunTerminationKindSchema.options.map((kind) => terminationExitCode(kind));
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(terminationExitCode('completed')).toBe(0);
+    expect(terminationExitCode('failed')).toBe(1);
+    expect(terminationExitCode('time_cap_reached')).toBe(3);
+    expect(terminationExitCode('infra_aborted')).toBe(4);
+    expect(terminationExitCode('cancelled')).toBe(5);
+  });
+
+  it('validates the termination object and keeps older run records readable', () => {
+    const termination = RunTerminationSchema.parse({
+      kind: 'time_cap_reached',
+      elapsedMs: 720_100,
+      capMs: 720_000,
+      lastCompletedStage: 'sessions',
+      sessionsExecuted: 7,
+      sessionsPlanned: 20,
+      partialDeltaManifest: {
+        sessionsPerVariant: { control: 4, treatment: 3 },
+        metricsComputed: ['scenario_success'],
+        exportsWritten: [],
+      },
+    });
+    expect(termination.failureCount).toBe(0);
+    expect(RunCountsSchema.parse({ planned: 2, completed: 2 })).toEqual({
+      planned: 2,
+      running: 0,
+      completed: 2,
+      failed: 0,
+      interrupted: 0,
+    });
+    expect(RunTerminationSchema.safeParse({ ...termination, kind: 'timeout' }).success).toBe(false);
   });
 });

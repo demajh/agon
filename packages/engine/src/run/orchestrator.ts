@@ -1,12 +1,16 @@
 import {
   ConfigError,
   ID_PREFIXES,
+  controlVariant,
+  countTrials,
   isAgonError,
   newId,
   nowIso,
   type Adapter,
   type AgonConfig,
   type ErrorCode,
+  type EvaluationLedger,
+  type LedgerEntry,
   type LlmClient,
   type PartialDeltaManifest,
   type Recorder,
@@ -19,6 +23,7 @@ import {
 } from '@agon/spec';
 import pino, { type Logger } from 'pino';
 import type { PatienceParams } from '../agent/patience.js';
+import { sampleHash, sampleIdentity, variantKey } from '../ledger/sample-hash.js';
 import { resolvePersonas, type ResolvePersonaOptions } from '../population/personas.js';
 import { planSessions, type SessionPlan } from '../population/sampler.js';
 import { TIME_CAP_STOP_REASON, runSession, type SessionResult } from '../session/runner.js';
@@ -27,6 +32,12 @@ export interface RunDeps {
   llm: LlmClient;
   adapters: Partial<Record<TargetKind, Adapter>>;
   recorder: Recorder;
+  /**
+   * The evaluation ledger. Every variant the run evaluates is appended when its evaluation
+   * starts, and again with its outcome at the end; the ledger's count is the number of trials.
+   * Without one, only this run's variants count.
+   */
+  ledger?: EvaluationLedger | undefined;
   logger?: Logger | undefined;
   /** Base directory for hooks and relative persona paths. */
   cwd?: string | undefined;
@@ -63,6 +74,10 @@ export interface RunOutcome {
   sessions: Session[];
   results: SessionResult[];
   termination: RunTermination;
+  /** Hash of the sample the run evaluated against (never the variants). */
+  sampleHash: string;
+  /** M: distinct treatment variants ever evaluated against that sample, this run included. */
+  trials: number;
 }
 
 /** Node timers overflow above this many ms; longer caps are re-armed in slices. */
@@ -139,6 +154,7 @@ export async function runExperiment(
     defaultModel: effectiveConfig.defaults.model,
   });
 
+  const hash = sampleHash(sampleIdentity(effectiveConfig, personas, { seed, size }));
   const run: Run = {
     id: runId,
     environmentId: options.environmentId ?? `env_${effectiveConfig.name}`,
@@ -148,11 +164,32 @@ export async function runExperiment(
     config: effectiveConfig,
     counts: { planned: plans.length, running: 0, completed: 0, failed: 0, interrupted: 0 },
     costUsd: 0,
+    sampleHash: hash,
     createdAt: nowIso(),
     startedAt: new Date(clockStart).toISOString(),
   };
   const log = logger.child({ runId });
   await deps.recorder.runStarted(run);
+
+  // The ledger entry for one variant of this run. Control is recorded but is not a trial.
+  const control = controlVariant(effectiveConfig);
+  const ledgerEntry = (
+    variant: string,
+    event: LedgerEntry['event'],
+    note?: string,
+  ): LedgerEntry => ({
+    sampleHash: hash,
+    runId,
+    variant,
+    variantKey: variantKey(variant, effectiveConfig.target.variants[variant]!),
+    role: variant === control ? 'control' : 'treatment',
+    event,
+    at: nowIso(),
+    ...(note === undefined ? {} : { note }),
+  });
+  const ledgerEntries = async (): Promise<LedgerEntry[]> =>
+    deps.ledger === undefined ? [] : deps.ledger.list(hash);
+  let trials = countTrials(await ledgerEntries());
   const termination = (
     kind: RunTerminationKind,
     extra: Partial<RunTermination> = {},
@@ -170,8 +207,21 @@ export async function runExperiment(
     run.termination = termination('completed', { lastCompletedStage: 'setup' });
     run.finishedAt = nowIso();
     await deps.recorder.runFinished(run);
-    return { run, plans, sessions: [], results: [], termination: run.termination };
+    return {
+      run,
+      plans,
+      sessions: [],
+      results: [],
+      termination: run.termination,
+      sampleHash: hash,
+      trials,
+    };
   }
+
+  // Written before any session runs, so an abandoned, capped or crashed run still counts.
+  const started = variants.map((v) => ledgerEntry(v, 'started'));
+  if (deps.ledger !== undefined) for (const entry of started) await deps.ledger.append(entry);
+  trials = countTrials(deps.ledger === undefined ? started : await ledgerEntries());
 
   // The time cap: counted from clockStart, so queue time and setup are inside it. Reaching it
   // aborts the shared signal with TIME_CAP_STOP_REASON; the runner tells it apart from a cancel.
@@ -285,10 +335,22 @@ export async function runExperiment(
   });
   run.finishedAt = nowIso();
   await deps.recorder.runFinished(run);
+  if (deps.ledger !== undefined) {
+    const finishedPerVariant = partialManifest(variants, results).sessionsPerVariant;
+    for (const v of variants) {
+      const n = finishedPerVariant[v] ?? 0;
+      const evaluated = run.status === 'completed' && n > 0;
+      await deps.ledger.append(
+        ledgerEntry(v, evaluated ? 'completed' : 'discarded', `${n} sessions, ${kind}`),
+      );
+    }
+  }
   log.info(
     {
       status: run.status,
       termination: run.termination.kind,
+      sampleHash: hash,
+      trials,
       counts: run.counts,
       costUsd: run.costUsd,
     },
@@ -300,6 +362,8 @@ export async function runExperiment(
     sessions: results.map((r) => r.session),
     results,
     termination: run.termination,
+    sampleHash: hash,
+    trials,
   };
 }
 

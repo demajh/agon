@@ -22,6 +22,10 @@ export const ComparisonSchema = z.object({
   pBeatControl: UnitSchema,
   expectedLoss: z.number().nonnegative(),
   pValue: UnitSchema.optional(),
+  zStat: z
+    .number()
+    .optional()
+    .describe('Test statistic of variant minus control (fixed and sequential methods)'),
 });
 export type Comparison = z.infer<typeof ComparisonSchema>;
 

@@ -13,6 +13,8 @@ import type {
   DecisionTrace,
   EventSource,
   Judgement,
+  LedgerEvent,
+  LedgerRole,
   LlmUsage,
   MetricResult,
   Observation,
@@ -31,6 +33,7 @@ import type {
 } from '@agon/spec';
 import {
   bigint,
+  bigserial,
   doublePrecision,
   index,
   integer,
@@ -99,6 +102,14 @@ export const DECISION_STATUSES = [
   'failed',
 ] as const satisfies readonly DecisionStatus[];
 export const DECISION_ACTORS = ['auto', 'human'] as const satisfies readonly Decision['actor'][];
+export const LEDGER_ROLES = ['control', 'treatment'] as const satisfies readonly LedgerRole[];
+export const LEDGER_EVENTS = [
+  'started',
+  'completed',
+  'discarded',
+  'promoted',
+  'killed',
+] as const satisfies readonly LedgerEvent[];
 /** Roles an API key can carry; the spec has no enum for these yet. */
 export const API_KEY_ROLES = ['observer', 'operator', 'squad'] as const;
 
@@ -112,6 +123,8 @@ export const squadStatus = pgEnum('squad_status', SQUAD_STATUSES);
 export const policyAction = pgEnum('policy_action', POLICY_ACTIONS);
 export const decisionStatus = pgEnum('decision_status', DECISION_STATUSES);
 export const decisionActor = pgEnum('decision_actor', DECISION_ACTORS);
+export const ledgerRole = pgEnum('ledger_role', LEDGER_ROLES);
+export const ledgerEvent = pgEnum('ledger_event', LEDGER_EVENTS);
 export const apiKeyRole = pgEnum('api_key_role', API_KEY_ROLES);
 
 /** Every timestamp is `timestamptz`, read as a `Date` and exposed as an ISO string by the repos. */
@@ -183,6 +196,7 @@ export const runs = pgTable(
     counts: jsonb('counts').$type<Run['counts']>().notNull(),
     costUsd: doublePrecision('cost_usd').notNull().default(0),
     resultId: text('result_id'),
+    sampleHash: text('sample_hash'),
     termination: jsonb('termination').$type<RunTermination>(),
     createdAt: timestamptz('created_at').notNull(),
     startedAt: timestamptz('started_at'),
@@ -192,6 +206,7 @@ export const runs = pgTable(
   (t) => [
     index('runs_environment_id_created_at_idx').on(t.environmentId, t.createdAt),
     index('runs_status_idx').on(t.status),
+    index('runs_sample_hash_idx').on(t.sampleHash),
   ],
 );
 
@@ -336,6 +351,29 @@ export const apiKeys = pgTable(
   (t) => [index('api_keys_squad_id_idx').on(t.squadId)],
 );
 
+/**
+ * The evaluation ledger: append-only, one row per (run, variant, event), keyed by the sample
+ * hash. `run_id` is deliberately not a foreign key: a trial still counts after its run is gone.
+ */
+export const evaluationLedger = pgTable(
+  'evaluation_ledger',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    sampleHash: text('sample_hash').notNull(),
+    runId: text('run_id').notNull(),
+    variant: text('variant').notNull(),
+    variantKey: text('variant_key').notNull(),
+    role: ledgerRole('role').notNull(),
+    event: ledgerEvent('event').notNull(),
+    at: timestamptz('at').notNull(),
+    note: text('note'),
+  },
+  (t) => [
+    index('evaluation_ledger_sample_hash_at_idx').on(t.sampleHash, t.at),
+    index('evaluation_ledger_run_id_idx').on(t.runId),
+  ],
+);
+
 /** `true` when `Values` lists every member of `Union`; otherwise names what is missing. */
 type Exhaustive<Values extends readonly string[], Union extends string> = [
   Exclude<Union, Values[number]>,
@@ -355,7 +393,9 @@ const enumsAreExhaustive: [
   Exhaustive<typeof POLICY_ACTIONS, PolicyAction>,
   Exhaustive<typeof DECISION_STATUSES, DecisionStatus>,
   Exhaustive<typeof DECISION_ACTORS, Decision['actor']>,
-] = [true, true, true, true, true, true, true, true, true, true];
+  Exhaustive<typeof LEDGER_ROLES, LedgerRole>,
+  Exhaustive<typeof LEDGER_EVENTS, LedgerEvent>,
+] = [true, true, true, true, true, true, true, true, true, true, true, true];
 void enumsAreExhaustive;
 
 export type EnvironmentRow = typeof environments.$inferSelect;
@@ -368,3 +408,4 @@ export type EventRow = typeof events.$inferSelect;
 export type ResultRow = typeof results.$inferSelect;
 export type DecisionRow = typeof decisions.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
+export type EvaluationLedgerRow = typeof evaluationLedger.$inferSelect;

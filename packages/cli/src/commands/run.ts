@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createMcpAdapter, createWebAdapter } from '@agon/adapters';
-import { runExperiment } from '@agon/engine';
+import { FileLedger, runExperiment } from '@agon/engine';
 import { createExporters } from '@agon/exporters';
 import { LLM_MODES, createLlmClient, type LlmMode, type LlmUsageTotals } from '@agon/llm';
 import {
@@ -23,6 +23,7 @@ import {
 import pino from 'pino';
 import { formatUsd, type Output } from '../output.js';
 import { CliRecorder } from '../recorder.js';
+import { ledgerDirFor } from './ledger.js';
 
 export interface RunCommandOptions {
   file: string;
@@ -35,6 +36,8 @@ export interface RunCommandOptions {
   timeCapMs?: number | undefined;
   /** Output directory; `<out>/<runId>/` receives the JSONL record and screenshots. */
   out?: string | undefined;
+  /** Evaluation ledger directory; default `<parent of out>/.agon/ledger`. */
+  ledgerDir?: string | undefined;
   llmMode?: string | undefined;
   llmCacheDir?: string | undefined;
   headful?: boolean | undefined;
@@ -207,6 +210,9 @@ export async function runCommand(
         if (!out.options.json) out.text(sessionLine(out, s));
       },
     });
+    const ledger = new FileLedger(
+      options.ledgerDir === undefined ? ledgerDirFor(outDir) : resolve(options.ledgerDir),
+    );
 
     if (!out.options.json) {
       out.text(
@@ -226,7 +232,14 @@ export async function runCommand(
         timeCapMs: options.timeCapMs,
         startedAt: new Date(startedAt).toISOString(),
       },
-      { llm, adapters: { [adapter.kind]: adapter }, recorder, logger, cwd: dirname(file) },
+      {
+        llm,
+        adapters: { [adapter.kind]: adapter },
+        recorder,
+        ledger,
+        logger,
+        cwd: dirname(file),
+      },
     );
     const totals = llm.totals?.();
     const summary = summarizeSessions(outcome.sessions);
@@ -250,6 +263,9 @@ export async function runCommand(
         elapsedS,
         termination,
         exitCode,
+        sampleHash: outcome.sampleHash,
+        trials: outcome.trials,
+        ledgerDir: ledger.dir,
         variants: summary,
         llm: totals ?? null,
         exportErrors,
@@ -260,6 +276,9 @@ export async function runCommand(
         `${runId} ${run.status}: ${outcome.sessions.length}/${outcome.plans.length} sessions, ${formatUsd(run.costUsd)}, ${elapsedS.toFixed(1)}s`,
       );
       out.text(`  termination: ${describeTermination(termination)}`);
+      out.text(
+        `  sample: ${outcome.sampleHash.slice(0, 12)} · trials M=${outcome.trials} distinct treatment variant(s) evaluated against it so far (ledger ${ledger.dir})`,
+      );
       if (options.dryRun) {
         const counts = outcome.plans.reduce<Record<string, number>>(
           (acc, p) => ({ ...acc, [p.variant]: (acc[p.variant] ?? 0) + 1 }),

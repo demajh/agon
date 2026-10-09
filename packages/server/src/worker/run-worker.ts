@@ -1,12 +1,15 @@
 import { mkdir, open } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { createDbRecorder, runs, sessions } from '@agon/db';
-import { runExperiment } from '@agon/engine';
+import { createDbLedger, createDbRecorder, ledger, runs, sessions } from '@agon/db';
+import { runExperiment, variantKey } from '@agon/engine';
 import { createExporters } from '@agon/exporters';
 import {
   ConfigError,
+  countTrials,
   isAgonError,
+  nowIso,
   type ExportConfig,
+  type LedgerEntry,
   type Recorder,
   type Result,
   type Run,
@@ -98,23 +101,54 @@ function watchForCancel(ctx: AppContext, runId: string, controller: AbortControl
   return () => clearInterval(timer);
 }
 
-/** Exports the run's sessions and runs the stats engine. Stores nothing; the caller does. */
+/**
+ * Exports the run's sessions and runs the stats engine with the trial count from the evaluation
+ * ledger; a ship or kill verdict is appended to the ledger. Stores the result nowhere; the
+ * caller does.
+ */
 async function analyze(ctx: AppContext, run: Run, log: Logger): Promise<Result> {
   const paths = dataPaths(ctx.config.dataDir);
   const list = await listAllSessions(ctx, run.id);
   const dir = paths.runDir(run.id);
   const sessionsPath = await writeSessionsJsonl(dir, list);
-  const analysis = buildAnalysisConfig(run.config, { id: run.id, seed: run.seed });
+  const entries =
+    run.sampleHash === undefined ? [] : await ledger.listBySample(ctx.db, run.sampleHash);
+  const trials = countTrials(entries);
+  const analysis = buildAnalysisConfig(
+    run.config,
+    { id: run.id, seed: run.seed },
+    { trials, sampleHash: run.sampleHash },
+  );
   const result = await ctx.stats.analyze({
     sessionsPath,
     analysis,
     outPath: join(dir, 'result.json'),
   });
+  const entry = verdictLedgerEntry(run, result);
+  if (entry !== undefined) await ledger.append(ctx.db, entry);
   log.info(
-    { resultId: result.id, verdict: result.decision.verdict, sessions: list.length },
+    { resultId: result.id, verdict: result.decision.verdict, sessions: list.length, trials },
     'analysis done',
   );
   return result;
+}
+
+/** The ledger entry a verdict adds for the variant it names: promoted on ship, killed on kill. */
+export function verdictLedgerEntry(run: Run, result: Result): LedgerEntry | undefined {
+  const variant = result.decision.variant;
+  const spec = variant === undefined ? undefined : run.config.target.variants[variant];
+  if (run.sampleHash === undefined || variant === undefined || spec === undefined) return undefined;
+  if (result.decision.verdict !== 'ship' && result.decision.verdict !== 'kill') return undefined;
+  return {
+    sampleHash: run.sampleHash,
+    runId: run.id,
+    variant,
+    variantKey: variantKey(variant, spec),
+    role: variant === result.control ? 'control' : 'treatment',
+    event: result.decision.verdict === 'ship' ? 'promoted' : 'killed',
+    at: nowIso(),
+    note: result.id,
+  };
 }
 
 /**
@@ -203,6 +237,7 @@ export async function processRun(ctx: AppContext, data: RunJobData): Promise<voi
         llm: deps.llm,
         adapters: { [deps.adapter.kind]: deps.adapter },
         recorder,
+        ledger: createDbLedger(ctx.db),
         logger: log,
         cwd: ctx.config.dataDir,
         signal: controller.signal,

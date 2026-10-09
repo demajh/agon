@@ -140,6 +140,19 @@ describeDb('run lifecycle through the pg-boss worker', () => {
     });
     // Analysis runs inside the engine's runFinished; the export stage closes right after.
     expect(['analysis', 'export']).toContain(run.termination?.lastCompletedStage);
+    expect(run.sampleHash).toMatch(/^[0-9a-f]{64}$/);
+    // The evaluation ledger counted both variants when the run started and closed them after.
+    const ledgerRows = await h.t.pool.query<{ variant: string; role: string; event: string }>(
+      'select variant, role, event from evaluation_ledger where run_id = $1 order by id',
+      [run.id],
+    );
+    expect(ledgerRows.rows.slice(0, 4)).toEqual([
+      { variant: 'control', role: 'control', event: 'started' },
+      { variant: 'treatment', role: 'treatment', event: 'started' },
+      { variant: 'control', role: 'control', event: 'completed' },
+      { variant: 'treatment', role: 'treatment', event: 'completed' },
+    ]);
+    for (const row of ledgerRows.rows.slice(4)) expect(['promoted', 'killed']).toContain(row.event);
 
     const listed = await h.t.request('GET', `/v1/environments/${env.id}/runs?status=completed`);
     expect((await listed.json<{ items: Run[] }>()).items.map((r) => r.id)).toEqual([run.id]);
@@ -194,6 +207,11 @@ describeDb('run lifecycle through the pg-boss worker', () => {
 
     const resultResponse = await h.t.request('GET', `/v1/runs/${run.id}/results`);
     expect(resultResponse.status).toBe(200);
+    if (USE_REAL_STATS) {
+      const stored = await resultResponse.json<Result>();
+      expect(stored.decision.rationale).toContain('Trials: M=1 distinct variant(s)');
+      expect(stored.decision.rationale).toContain(`sample ${run.sampleHash?.slice(0, 12)}`);
+    }
     const result = ResultSchema.parse(await resultResponse.json<Result>());
     expect(result.runId).toBe(run.id);
     expect(result.control).toBe('control');

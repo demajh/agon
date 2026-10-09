@@ -3,6 +3,7 @@ import { personasListCommand, personasShowCommand } from './commands/personas.js
 import { compareCommand } from './commands/compare.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
+import { ledgerCommand } from './commands/ledger.js';
 import { schemaCommand } from './commands/schema.js';
 import { stallReportCommand } from './commands/stall-report.js';
 import { traceCommand } from './commands/trace.js';
@@ -74,6 +75,10 @@ export function createProgram(deps: ProgramDeps = {}): Command {
       (v) => Number.parseInt(v, 10),
     )
     .option('-o, --out <dir>', 'output directory (default ./agon-out or $AGON_OUT_DIR)')
+    .option(
+      '--ledger-dir <dir>',
+      'evaluation ledger directory (default <parent of out>/.agon/ledger)',
+    )
     .option('--llm-mode <mode>', 'live | record | replay | off (default $AGON_LLM_MODE or live)')
     .option('--llm-cache <dir>', 'record/replay cache directory (default .agon/llm-cache)')
     .option('--headful', 'show the browser while it runs', false)
@@ -90,6 +95,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
           concurrency?: number;
           timeCapMs?: number;
           out?: string;
+          ledgerDir?: string;
           llmMode?: string;
           llmCache?: string;
           headful: boolean;
@@ -107,6 +113,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             concurrency: opts.concurrency,
             timeCapMs: opts.timeCapMs,
             out: opts.out,
+            ledgerDir: opts.ledgerDir,
             llmMode: opts.llmMode,
             llmCacheDir: opts.llmCache,
             headful: opts.headful,
@@ -134,6 +141,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .option('--seed <n>', 'Monte Carlo / bootstrap seed (default the run seed)', (v) =>
       Number.parseInt(v, 10),
     )
+    .option('--ledger-dir <dir>', 'evaluation ledger directory (default next to the run output)')
     .action(
       async (
         dir: string,
@@ -144,6 +152,7 @@ export function createProgram(deps: ProgramDeps = {}): Command {
           profile?: string;
           category?: string;
           seed?: number;
+          ledgerDir?: string;
         },
       ) => {
         exit(
@@ -155,10 +164,25 @@ export function createProgram(deps: ProgramDeps = {}): Command {
             profile: opts.profile,
             category: opts.category,
             seed: opts.seed,
+            ledgerDir: opts.ledgerDir,
           }),
         );
       },
     );
+
+  program
+    .command('ledger')
+    .description(
+      'Print the evaluation ledger of a run or sample hash: how many distinct variants were ever evaluated against that sample (M), and every entry',
+    )
+    .argument('<target>', 'run directory, output directory (newest run), or a sample hash prefix')
+    .option(
+      '--ledger-dir <dir>',
+      'evaluation ledger directory (default next to the run output, or .agon/ledger)',
+    )
+    .action(async (target: string, opts: { ledgerDir?: string }) => {
+      exit(await ledgerCommand(output(), { target, ledgerDir: opts.ledgerDir }));
+    });
 
   program
     .command('trace')

@@ -126,6 +126,12 @@ export const RunSchema = z.object({
   counts: RunCountsSchema.prefault({}),
   costUsd: z.number().nonnegative().default(0),
   resultId: IdSchema.optional(),
+  sampleHash: z
+    .string()
+    .optional()
+    .describe(
+      'Hash of the evaluation sample (population, personas, scenarios, seed, analysis settings, target identity; never the variants); the evaluation ledger is keyed by it',
+    ),
   termination: RunTerminationSchema.optional().describe('How the run ended; set once it finished'),
   createdAt: TimestampSchema,
   startedAt: TimestampSchema.optional(),

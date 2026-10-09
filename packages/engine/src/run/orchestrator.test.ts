@@ -243,4 +243,98 @@ describe('runExperiment', () => {
       ),
     ).rejects.toThrow(/invalid startedAt/);
   });
+
+  it('stamps the sample hash on the run and keeps the trial count in the ledger across runs', async () => {
+    const { FileLedger } = await import('../ledger/file-ledger.js');
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const ledger = new FileLedger(join(mkdtempSync(join(tmpdir(), 'agon-orch-ledger-')), 'ledger'));
+    const config = testConfig({ population: { seed: 3, size: 4, personas: [{ use: 'eager' }] } });
+    const deps = () => ({
+      llm: new FakeLlm(happyUser),
+      adapters: { web: new FakeAdapter(ledgerlySite) },
+      recorder: new MemoryRecorder(),
+      logger,
+      ledger,
+    });
+    const first = await runExperiment(config, { runId: 'run_l1' }, deps());
+    expect(first.sampleHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.run.sampleHash).toBe(first.sampleHash);
+    expect(first.trials).toBe(1); // one treatment against this sample so far
+    const entries = await ledger.list(first.sampleHash);
+    expect(entries.map((e) => [e.variant, e.role, e.event])).toEqual([
+      ['control', 'control', 'started'],
+      ['treatment', 'treatment', 'started'],
+      ['control', 'control', 'completed'],
+      ['treatment', 'treatment', 'completed'],
+    ]);
+    expect(entries[2]?.note).toBe('2 sessions, completed');
+
+    // Another variant against the same sample: same hash, M becomes 2.
+    const another = {
+      ...config,
+      target: {
+        ...config.target,
+        variants: {
+          ...config.target.variants,
+          v2: { url: 'http://v2.test', env: {}, headers: {} },
+        },
+      },
+    };
+    const second = await runExperiment(
+      another,
+      { runId: 'run_l2', variants: ['control', 'v2'] },
+      deps(),
+    );
+    expect(second.sampleHash).toBe(first.sampleHash);
+    expect(second.trials).toBe(2);
+    // The same variant again is not a new trial; a redeploy under the same name is.
+    expect((await runExperiment(config, { runId: 'run_l3' }, deps())).trials).toBe(2);
+    const redeployed = {
+      ...config,
+      target: {
+        ...config.target,
+        variants: {
+          ...config.target.variants,
+          treatment: { url: 'http://treatment.test', gitRef: 'v2', env: {}, headers: {} },
+        },
+      },
+    };
+    expect((await runExperiment(redeployed, { runId: 'run_l4' }, deps())).trials).toBe(3);
+
+    // A run cut by the cap still counted at start and discards its variants.
+    const capped = await runExperiment(
+      another,
+      {
+        runId: 'run_l5',
+        variants: ['control', 'v2'],
+        startedAt: new Date(Date.now() - 720_000).toISOString(),
+      },
+      deps(),
+    );
+    expect(capped.termination.kind).toBe('time_cap_reached');
+    const after = await ledger.list(first.sampleHash);
+    expect(after.filter((e) => e.runId === 'run_l5').map((e) => e.event)).toEqual([
+      'started',
+      'started',
+      'discarded',
+      'discarded',
+    ]);
+    expect(capped.trials).toBe(3);
+
+    // A different seed is a fresh holdout: new hash, count starts again.
+    const fresh = await runExperiment(config, { runId: 'run_l6', seed: 99 }, deps());
+    expect(fresh.sampleHash).not.toBe(first.sampleHash);
+    expect(fresh.trials).toBe(1);
+
+    // Without a ledger only this run's variants count.
+    const noLedger = await runExperiment(
+      another,
+      { runId: 'run_l7' },
+      { ...deps(), ledger: undefined },
+    );
+    expect(noLedger.trials).toBe(2);
+    expect(RunSchema.safeParse(noLedger.run).success).toBe(true);
+  });
 });

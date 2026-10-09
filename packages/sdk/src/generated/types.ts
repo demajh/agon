@@ -1372,6 +1372,8 @@ export interface components {
                     pBeatControl: number;
                     expectedLoss: number;
                     pValue?: number;
+                    /** @description Test statistic of variant minus control (fixed and sequential methods) */
+                    zStat?: number;
                 }[];
                 varianceDecomposition?: {
                     persona: number;
@@ -1430,6 +1432,8 @@ export interface components {
             /** @default 0 */
             costUsd: number;
             resultId?: string;
+            /** @description Hash of the evaluation sample (population, personas, scenarios, seed, analysis settings, target identity; never the variants); the evaluation ledger is keyed by it */
+            sampleHash?: string;
             /** @description How the run ended; set once it finished */
             termination?: {
                 /**

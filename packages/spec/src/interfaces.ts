@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { ModelRef } from './common.js';
 import type { AgonEvent, EventDraft } from './event.js';
+import type { LedgerEntry } from './ledger.js';
 import type { Device } from './persona.js';
 import type { Run } from './run.js';
 import type { Result } from './result.js';
@@ -106,4 +107,16 @@ export interface Recorder {
   events(events: AgonEvent[]): Promise<void>;
   sessionFinished(session: Session): Promise<void>;
   runFinished(run: Run, result?: Result): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation ledger: append-only trial counter keyed by sample hash. The engine's FileLedger
+// (JSONL) and @agon/db's createDbLedger implement it.
+// ---------------------------------------------------------------------------
+
+export interface EvaluationLedger {
+  /** Appends one entry; entries are never updated or removed. */
+  append(entry: LedgerEntry): Promise<void>;
+  /** Every entry recorded against a sample, in insertion order. */
+  list(sampleHash: string): Promise<LedgerEntry[]>;
 }

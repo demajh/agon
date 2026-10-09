@@ -1132,7 +1132,11 @@
                       },
                       "pBeatControl": { "type": "number", "minimum": 0, "maximum": 1 },
                       "expectedLoss": { "type": "number", "minimum": 0 },
-                      "pValue": { "type": "number", "minimum": 0, "maximum": 1 }
+                      "pValue": { "type": "number", "minimum": 0, "maximum": 1 },
+                      "zStat": {
+                        "type": "number",
+                        "description": "Test statistic of variant minus control (fixed and sequential methods)"
+                      }
                     },
                     "required": [
                       "variant",
@@ -1239,6 +1243,10 @@
           },
           "costUsd": { "type": "number", "minimum": 0, "default": 0 },
           "resultId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "sampleHash": {
+            "type": "string",
+            "description": "Hash of the evaluation sample (population, personas, scenarios, seed, analysis settings, target identity; never the variants); the evaluation ledger is keyed by it"
+          },
           "termination": {
             "type": "object",
             "properties": {

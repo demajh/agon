@@ -16,5 +16,7 @@ export * as results from './repos/results.js';
 export * as squads from './repos/squads.js';
 export * as decisions from './repos/decisions.js';
 export * as apiKeys from './repos/apiKeys.js';
+export * as ledger from './repos/ledger.js';
 
 export { createDbRecorder } from './recorder.js';
+export { createDbLedger } from './repos/ledger.js';

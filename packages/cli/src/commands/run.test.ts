@@ -124,10 +124,22 @@ describe('agon run + agon trace', () => {
       expect(cmp.text()).toMatch(/verdict: (SHIP|KILL|CONTINUE|INCONCLUSIVE)/);
       expect(cmp.text()).toContain('activation*');
       expect(cmp.text()).toContain('calibration: uncalibrated-v0');
+      expect(cmp.text()).toMatch(
+        /trials: M=1 distinct treatment variant\(s\) against sample [0-9a-f]{12}/,
+      );
       const asJson = capture(true);
       expect(await compareCommand(asJson.out, { dir: runDir })).toBe(0);
-      expect((JSON.parse(asJson.text()) as { result: { runId: string } }).result.runId).toMatch(
-        /^run_/,
+      const compared = JSON.parse(asJson.text()) as {
+        result: { runId: string; decision: { rationale: string } };
+        trials: number;
+        sampleHash: string;
+      };
+      expect(compared.result.runId).toMatch(/^run_/);
+      expect(compared.trials).toBe(1);
+      expect(compared.sampleHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(compared.result.decision.rationale).toContain('Trials: M=1');
+      expect(compared.result.decision.rationale).toContain(
+        `sample ${compared.sampleHash.slice(0, 12)}`,
       );
     }
   }, 120_000);

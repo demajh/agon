@@ -78,3 +78,11 @@ export {
   type RunOptions,
   type RunOutcome,
 } from './run/orchestrator.js';
+export {
+  canonicalJson,
+  sampleHash,
+  sampleIdentity,
+  variantKey,
+  type SampleIdentity,
+} from './ledger/sample-hash.js';
+export { DEFAULT_LEDGER_DIR, FileLedger } from './ledger/file-ledger.js';

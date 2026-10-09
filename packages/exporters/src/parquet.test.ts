@@ -1,6 +1,11 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SCENARIO_SUCCESS_METRIC_ID, ValidationError } from '@agon/spec';
+import {
+  CONTRACT_SCHEMA_VERSION,
+  CURRENT_REQUIRED_SET,
+  SCENARIO_SUCCESS_METRIC_ID,
+  ValidationError,
+} from '@agon/spec';
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects } from 'hyparquet';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -184,6 +189,28 @@ describe('ParquetExporter', () => {
         [SCENARIO_SUCCESS_METRIC_ID]: isSuccessful(session.index) ? 1 : 0,
       });
       expect(rows.every((r) => r.variant === session.variant && r.run_id === RUN_ID)).toBe(true);
+    }
+  });
+
+  it('stamps every row of every table with the results contract', async () => {
+    const exporter = new ParquetExporter({ type: 'parquet', path: dir }, makeContext());
+    await runLifecycle(exporter, { sessions: 2, eventsPerSession: 2 });
+    await exporter.close();
+    const tables = [
+      [PARQUET_FILES.sessions, CURRENT_REQUIRED_SET.session_row],
+      [PARQUET_FILES.events, CURRENT_REQUIRED_SET.event_row],
+      [PARQUET_FILES.exposures, CURRENT_REQUIRED_SET.exposure_row],
+      [PARQUET_FILES.metricValues, CURRENT_REQUIRED_SET.metric_value_row],
+    ] as const;
+    for (const [file, requiredSet] of tables) {
+      const { rows } = await readTable(join(dir, RUN_ID, file));
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          schema_version: CONTRACT_SCHEMA_VERSION,
+          required_set: requiredSet,
+        });
+      }
     }
   });
 

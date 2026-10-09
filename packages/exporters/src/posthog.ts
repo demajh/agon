@@ -1,5 +1,5 @@
 import type { AgonEvent, Result, Run, Session, Step } from '@agon/spec';
-import { simProperties } from '@agon/spec';
+import { analyticsStamp, simProperties } from '@agon/spec';
 import { PostHog } from 'posthog-node';
 import type {
   ExportFailure,
@@ -45,6 +45,8 @@ export const POSTHOG_DEFAULTS = {
  *   (`$feature_flag`, `$feature_flag_response` = variant);
  * - per event a capture carrying the original properties (markers included) plus
  *   `$feature/<experimentKey>` = variant.
+ * Every capture also carries the results contract stamp (`agon_schema_version`,
+ * `agon_required_set`), see docs/results-contract.md.
  *
  * Network errors never throw mid-run: posthog-node retries, then the failure is recorded and
  * surfaced as one `ExportError` from `close()`. Captures apply backpressure: every `flushAt`
@@ -111,11 +113,12 @@ export class PostHogExporter implements Exporter {
       model: persona.model,
       scenarioId: session.scenarioId,
     });
+    const stamp = analyticsStamp(markers);
     const timestamp = optionalDate(session.startedAt ?? session.finishedAt);
     this.capture({
       distinctId: persona.distinctId,
       event: '$set',
-      properties: { ...markers, $set: personaProperties(session) },
+      properties: { ...markers, ...stamp, $set: personaProperties(session) },
       timestamp,
     });
     if (this.experimentKey) {
@@ -124,6 +127,7 @@ export class PostHogExporter implements Exporter {
         event: '$feature_flag_called',
         properties: {
           ...markers,
+          ...stamp,
           $feature_flag: this.experimentKey,
           $feature_flag_response: session.variant,
           [`$feature/${this.experimentKey}`]: session.variant,
@@ -142,7 +146,10 @@ export class PostHogExporter implements Exporter {
     assertAllSimulated(events);
     for (const event of events) {
       const markers = readMarkers(event);
-      const properties: Record<string, unknown> = { ...event.properties };
+      const properties: Record<string, unknown> = {
+        ...event.properties,
+        ...analyticsStamp(markers),
+      };
       if (this.experimentKey) properties[`$feature/${this.experimentKey}`] = markers.agon_variant;
       this.capture({
         distinctId: event.distinctId,

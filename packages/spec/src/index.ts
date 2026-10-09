@@ -15,5 +15,6 @@ export * from './result.js';
 export * from './config.js';
 export * from './run.js';
 export * from './ledger.js';
+export * from './contract.js';
 export * from './receipts.js';
 export * from './interfaces.js';

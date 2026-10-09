@@ -57,6 +57,8 @@ export {
   toAmplitudeEvent,
 } from './amplitude.js';
 export { MultiExporter } from './multi.js';
+export type { IngestOutcome, ReplayOutcome, RowGateOptions, ServeOutcome } from './gate.js';
+export { RowGate, loadGateSnapshot, saveGateSnapshot } from './gate.js';
 
 /** Builds the sink for one `export:` entry of `agon.yaml`. */
 export function createExporter(config: ExportConfig, ctx: ExporterContext): Exporter {

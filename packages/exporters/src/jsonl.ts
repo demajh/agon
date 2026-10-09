@@ -1,6 +1,6 @@
 import { basename, join, resolve } from 'node:path';
 import type { AgonEvent, Result, Run, Session, Step } from '@agon/spec';
-import { nowIso } from '@agon/spec';
+import { CONTRACT_SCHEMA_VERSION, CURRENT_REQUIRED_SET, nowIso, stampRow } from '@agon/spec';
 import type { Exporter, ExporterContext, JsonlExportConfig } from './exporter.js';
 import { assertAllSimulated } from './exporter.js';
 import { AppendFile, ensureDir, writeFileAtomic } from './fs.js';
@@ -22,10 +22,15 @@ export interface JsonlManifestFile {
 }
 
 export interface JsonlManifest {
-  version: 1;
+  version: 2;
   runId: string;
   experimentName: string;
   writtenAt: string;
+  /** The results contract every row in this directory was stamped under. */
+  contract: {
+    schemaVersion: string;
+    requiredSets: { sessions: string; steps: string; events: string; result: string };
+  };
   files: JsonlManifestFile[];
 }
 
@@ -33,7 +38,9 @@ export interface JsonlManifest {
  * Writes a run to `<path>/<runId>/`: `run.json` (rewritten on finish), `sessions.jsonl`,
  * `steps.jsonl`, `events.jsonl` (append streams, flushed and fsynced on close), `result.json`
  * when a result exists, and a `manifest.json` listing every file with its row count.
- * One JSON document per line; rows round-trip through `JSON.parse`.
+ * One JSON document per line; rows round-trip through `JSON.parse`. Every session, step, event
+ * and the result carry the contract stamp (`schemaVersion`, `requiredSet`); `run.json` is the run
+ * record, not a row, and is written as is.
  */
 export class JsonlExporter implements Exporter {
   readonly name = 'jsonl';
@@ -66,26 +73,26 @@ export class JsonlExporter implements Exporter {
 
   async sessionFinished(session: Session): Promise<void> {
     await this.open();
-    await this.sessionsFile.append([jsonLine(session)]);
+    await this.sessionsFile.append([jsonLine(stampRow('session', session))]);
   }
 
   async steps(steps: Step[]): Promise<void> {
     if (steps.length === 0) return;
     await this.open();
-    await this.stepsFile.append(steps.map(jsonLine));
+    await this.stepsFile.append(steps.map((step) => jsonLine(stampRow('step', step))));
   }
 
   async events(events: AgonEvent[]): Promise<void> {
     assertAllSimulated(events);
     if (events.length === 0) return;
     await this.open();
-    await this.eventsFile.append(events.map(jsonLine));
+    await this.eventsFile.append(events.map((event) => jsonLine(stampRow('event', event))));
   }
 
   async runFinished(run: Run, result?: Result): Promise<void> {
     await this.open();
     await this.writeDocument(JSONL_FILES.run, run);
-    if (result) await this.writeDocument(JSONL_FILES.result, result);
+    if (result) await this.writeDocument(JSONL_FILES.result, stampRow('result', result));
   }
 
   async close(): Promise<void> {
@@ -120,10 +127,19 @@ export class JsonlExporter implements Exporter {
     }
     document(JSONL_FILES.result);
     return {
-      version: 1,
+      version: 2,
       runId: this.ctx.runId,
       experimentName: this.ctx.experimentName,
       writtenAt: nowIso(),
+      contract: {
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        requiredSets: {
+          sessions: CURRENT_REQUIRED_SET.session,
+          steps: CURRENT_REQUIRED_SET.step,
+          events: CURRENT_REQUIRED_SET.event,
+          result: CURRENT_REQUIRED_SET.result,
+        },
+      },
       files,
     };
   }

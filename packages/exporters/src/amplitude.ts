@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { AgonEvent, Result, Run, Session, Step } from '@agon/spec';
-import { simProperties } from '@agon/spec';
+import { analyticsStamp, simProperties } from '@agon/spec';
 import type {
   AmplitudeExportConfig,
   ExportFailure,
@@ -58,6 +58,8 @@ export interface AmplitudeUploadBody {
  * Uploads to the Amplitude HTTP API v2 in batches of up to `batchSize` events: one
  * `$identify` per finished session (persona traits and variant as user properties) and one
  * event per Agon event, with `agon_variant`, `agon_persona` and `agon_model` as user properties.
+ * Every event's properties carry the results contract stamp (`agon_schema_version`,
+ * `agon_required_set`), see docs/results-contract.md.
  * 408/429/5xx responses and network errors are retried with exponential backoff; a batch that
  * still fails is recorded and surfaced as one `ExportError` from `close()`.
  */
@@ -213,7 +215,7 @@ export function toAmplitudeEvent(event: AgonEvent): AmplitudeEvent {
     user_id: event.distinctId,
     event_type: event.event,
     time: Date.parse(event.timestamp),
-    event_properties: event.properties,
+    event_properties: { ...event.properties, ...analyticsStamp(markers) },
     user_properties: {
       agon_variant: markers.agon_variant,
       agon_persona: markers.agon_persona,
@@ -239,7 +241,7 @@ export function identifyEvent(session: Session): AmplitudeEvent {
     user_id: persona.distinctId,
     event_type: '$identify',
     time: at === undefined ? Date.now() : Date.parse(at),
-    event_properties: { ...markers },
+    event_properties: { ...markers, ...analyticsStamp(markers) },
     user_properties: {
       agon_simulated: true,
       agon_variant: session.variant,

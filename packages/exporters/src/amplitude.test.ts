@@ -1,4 +1,4 @@
-import { ValidationError } from '@agon/spec';
+import { CONTRACT_SCHEMA_VERSION, ValidationError } from '@agon/spec';
 import { describe, expect, it } from 'vitest';
 import {
   makeContext,
@@ -71,7 +71,11 @@ describe('AmplitudeExporter', () => {
         user_id: event.distinctId,
         event_type: event.event,
         time: Date.parse(event.timestamp),
-        event_properties: event.properties,
+        event_properties: {
+          ...event.properties,
+          agon_schema_version: CONTRACT_SCHEMA_VERSION,
+          agon_required_set: 'agon.analytics_event.1',
+        },
         user_properties: {
           agon_variant: event.properties.agon_variant,
           agon_persona: event.properties.agon_persona,

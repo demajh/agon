@@ -80,12 +80,8 @@
           "name": "api_keys_squad_id_squads_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "squads",
-          "columnsFrom": [
-            "squad_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["squad_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -95,9 +91,7 @@
         "api_keys_key_hash_key": {
           "name": "api_keys_key_hash_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "key_hash"
-          ]
+          "columns": ["key_hash"]
         }
       },
       "policies": {},
@@ -541,12 +535,8 @@
           "name": "events_run_id_runs_id_fk",
           "tableFrom": "events",
           "tableTo": "runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -554,12 +544,8 @@
           "name": "events_session_id_sessions_id_fk",
           "tableFrom": "events",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -648,12 +634,8 @@
           "name": "results_run_id_runs_id_fk",
           "tableFrom": "results",
           "tableTo": "runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -663,9 +645,7 @@
         "results_run_id_key": {
           "name": "results_run_id_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "run_id"
-          ]
+          "columns": ["run_id"]
         }
       },
       "policies": {},
@@ -827,12 +807,8 @@
           "name": "runs_environment_id_environments_id_fk",
           "tableFrom": "runs",
           "tableTo": "environments",
-          "columnsFrom": [
-            "environment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["environment_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1024,12 +1000,8 @@
           "name": "sessions_run_id_runs_id_fk",
           "tableFrom": "sessions",
           "tableTo": "runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1039,10 +1011,7 @@
         "sessions_run_id_index_key": {
           "name": "sessions_run_id_index_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "run_id",
-            "index"
-          ]
+          "columns": ["run_id", "index"]
         }
       },
       "policies": {},
@@ -1124,9 +1093,7 @@
         "squads_slug_key": {
           "name": "squads_slug_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -1204,12 +1171,8 @@
           "name": "steps_session_id_sessions_id_fk",
           "tableFrom": "steps",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1219,10 +1182,7 @@
         "steps_session_id_index_key": {
           "name": "steps_session_id_index_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "session_id",
-            "index"
-          ]
+          "columns": ["session_id", "index"]
         }
       },
       "policies": {},
@@ -1304,12 +1264,8 @@
           "name": "variants_environment_id_environments_id_fk",
           "tableFrom": "variants",
           "tableTo": "environments",
-          "columnsFrom": [
-            "environment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["environment_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1317,12 +1273,8 @@
           "name": "variants_squad_id_squads_id_fk",
           "tableFrom": "variants",
           "tableTo": "squads",
-          "columnsFrom": [
-            "squad_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["squad_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1332,10 +1284,7 @@
         "variants_environment_id_name_key": {
           "name": "variants_environment_id_name_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "environment_id",
-            "name"
-          ]
+          "columns": ["environment_id", "name"]
         }
       },
       "policies": {},
@@ -1347,130 +1296,67 @@
     "public.analysis_method": {
       "name": "analysis_method",
       "schema": "public",
-      "values": [
-        "bayesian",
-        "sequential",
-        "fixed"
-      ]
+      "values": ["bayesian", "sequential", "fixed"]
     },
     "public.analytics_provider": {
       "name": "analytics_provider",
       "schema": "public",
-      "values": [
-        "posthog",
-        "segment",
-        "amplitude",
-        "ga"
-      ]
+      "values": ["posthog", "segment", "amplitude", "ga"]
     },
     "public.api_key_role": {
       "name": "api_key_role",
       "schema": "public",
-      "values": [
-        "observer",
-        "operator",
-        "squad"
-      ]
+      "values": ["observer", "operator", "squad"]
     },
     "public.decision_actor": {
       "name": "decision_actor",
       "schema": "public",
-      "values": [
-        "auto",
-        "human"
-      ]
+      "values": ["auto", "human"]
     },
     "public.decision_status": {
       "name": "decision_status",
       "schema": "public",
-      "values": [
-        "proposed",
-        "approved",
-        "rejected",
-        "executed",
-        "failed"
-      ]
+      "values": ["proposed", "approved", "rejected", "executed", "failed"]
     },
     "public.event_source": {
       "name": "event_source",
       "schema": "public",
-      "values": [
-        "intercepted",
-        "inferred",
-        "judge"
-      ]
+      "values": ["intercepted", "inferred", "judge"]
     },
     "public.ledger_event": {
       "name": "ledger_event",
       "schema": "public",
-      "values": [
-        "started",
-        "completed",
-        "discarded",
-        "promoted",
-        "killed"
-      ]
+      "values": ["started", "completed", "discarded", "promoted", "killed"]
     },
     "public.ledger_role": {
       "name": "ledger_role",
       "schema": "public",
-      "values": [
-        "control",
-        "treatment"
-      ]
+      "values": ["control", "treatment"]
     },
     "public.policy_action": {
       "name": "policy_action",
       "schema": "public",
-      "values": [
-        "reallocate",
-        "pause",
-        "resume",
-        "kill",
-        "notify"
-      ]
+      "values": ["reallocate", "pause", "resume", "kill", "notify"]
     },
     "public.run_status": {
       "name": "run_status",
       "schema": "public",
-      "values": [
-        "queued",
-        "running",
-        "completed",
-        "failed",
-        "cancelled"
-      ]
+      "values": ["queued", "running", "completed", "failed", "cancelled"]
     },
     "public.session_outcome": {
       "name": "session_outcome",
       "schema": "public",
-      "values": [
-        "success",
-        "gave_up",
-        "max_steps",
-        "budget_exceeded",
-        "error",
-        "stalled"
-      ]
+      "values": ["success", "gave_up", "max_steps", "budget_exceeded", "error", "stalled"]
     },
     "public.session_status": {
       "name": "session_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "running",
-        "finished",
-        "failed"
-      ]
+      "values": ["pending", "running", "finished", "failed"]
     },
     "public.squad_status": {
       "name": "squad_status",
       "schema": "public",
-      "values": [
-        "active",
-        "paused",
-        "killed"
-      ]
+      "values": ["active", "paused", "killed"]
     }
   },
   "schemas": {},

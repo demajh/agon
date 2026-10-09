@@ -128,3 +128,14 @@ produce a note saying the profile is unknown rather than failing.
 `allocate` draws 10,000 samples from `Beta(wins + 1, losses + 1)` per squad, takes the share of
 draws in which each squad is best, and mixes in a uniform floor so every squad keeps at least
 `--floor` of the allocation. Output: `{"allocation": {"blue": 0.6, ...}}`, summing to 1.
+
+## Trials and the evaluation ledger
+
+`trials` (M, default 1) is the number of distinct variants ever evaluated against the same
+sample, read by the TypeScript side from the evaluation ledger keyed by `sampleHash` (see
+`docs/trial-ledger.md`). Every rationale states M and the sample hash prefix. For `fixed`, a ship
+candidate must also clear the quantile of the max of M standard normals,
+`z > Phi^-1((1 - alpha)^(1/M))` (1.645 at M=1, 3.283 at M=100 for alpha 0.05), where `z` is the
+comparison's test statistic (`zStat` in the output for `fixed` and `sequential`); at M=1 the
+existing two-sided rule stays in charge. `bayesian` and `sequential` report M and warn that
+`pBest` is not corrected for the number of trials searched. The kill rule is unchanged.

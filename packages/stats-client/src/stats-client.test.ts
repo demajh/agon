@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AgonConfigSchema, SessionSchema, type Session } from '@agon/spec';
+import { AgonConfigSchema, SessionSchema, requirementsDigest, type Session } from '@agon/spec';
 import { describe, expect, it } from 'vitest';
 import {
   allocateSquads,
@@ -104,6 +104,25 @@ describe('buildAnalysisConfig', () => {
     expect(() =>
       buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { control: 'nope' }),
     ).toThrow(/control "nope"/);
+  });
+
+  it('digests the requirements the result is accepted under, overrides included', () => {
+    const plain = buildAnalysisConfig(config, { id: 'run_x', seed: 7 });
+    expect(plain.requirementsDigest).toBe(requirementsDigest(config));
+    // the seed and the change category do not decide acceptance
+    expect(
+      buildAnalysisConfig(config, { id: 'run_y', seed: 9 }, { seed: 3, changeCategory: 'copy' })
+        .requirementsDigest,
+    ).toBe(plain.requirementsDigest);
+    const fixed = buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { method: 'fixed' });
+    expect(fixed.requirementsDigest).toBe(
+      requirementsDigest({ ...config, analysis: { ...config.analysis, method: 'fixed' } }),
+    );
+    expect(fixed.requirementsDigest).not.toBe(plain.requirementsDigest);
+    expect(
+      buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { minSessionsPerVariant: 1 })
+        .requirementsDigest,
+    ).not.toBe(plain.requirementsDigest);
   });
 });
 

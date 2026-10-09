@@ -184,6 +184,8 @@ function makeResult(
     sessionsAnalyzed: 20,
     computedAt: new Date().toISOString(),
     engine: { name: 'test', version: '0' },
+    kind: 'model',
+    assumptions: [],
   };
 }
 

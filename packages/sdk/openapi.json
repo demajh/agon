@@ -529,6 +529,23 @@
                 "type": "string",
                 "minLength": 1,
                 "default": "uncalibrated-v0"
+              },
+              "materiality": {
+                "type": "object",
+                "properties": {
+                  "fields": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "default": [],
+                    "description": "Dotted paths of output fields that count as decision-relevant (e.g. \"outcome\", \"metrics.activation\", \"response.total\")"
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Why the boundary sits where it does, e.g. the incident that moved a field in"
+                  }
+                },
+                "default": {},
+                "description": "The materiality boundary: output fields a decision may turn on. Versioned under the requirements digest every result carries; see docs/receipts-and-findings.md"
               }
             },
             "default": {}
@@ -1194,6 +1211,23 @@
             "type": "object",
             "properties": { "name": { "type": "string" }, "version": { "type": "string" } },
             "required": ["name", "version"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["model", "measurement"],
+            "default": "model",
+            "description": "model: computed before release from simulated sessions (a rehearsal); measurement: the live window after release (an observation). Results of agon-stats analyze are always models"
+          },
+          "assumptions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "What a model result assumes; empty for a measurement"
+          },
+          "requirementsDigest": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hash of the requirements this receipt was accepted under: the analysis section (materiality included), the metrics and the policies. Absent only on results computed before receipts existed; never rewritten"
           }
         },
         "required": [

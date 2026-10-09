@@ -102,6 +102,7 @@ def make_config(**overrides: Any) -> AnalysisConfig:
         "calibrationProfile": "uncalibrated-v0",
         "seed": 0,
         "metrics": [],
+        "requirementsDigest": "0" * 64,
     }
     document.update(overrides)
     return parse_config(document)

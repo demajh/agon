@@ -262,6 +262,9 @@ export function makeResult(): Result {
     sessionsAnalyzed: 4,
     computedAt: iso(600_000),
     engine: { name: 'agon-stats', version: '0.0.1' },
+    kind: 'model',
+    assumptions: ['sessions were simulated by LLM-driven personas, not real users'],
+    requirementsDigest: 'f'.repeat(64),
   });
 }
 

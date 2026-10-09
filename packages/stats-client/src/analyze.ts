@@ -10,6 +10,7 @@ import {
   ResultSchema,
   ValidationError,
   controlVariant,
+  requirementsDigest,
   type AgonConfig,
   type Analysis,
   type Metric,
@@ -36,6 +37,11 @@ export interface AnalysisConfig {
   /** M from the evaluation ledger: distinct variants ever evaluated against the sample. */
   trials?: number;
   sampleHash?: string;
+  /**
+   * Hash of the requirements the result is accepted under (analysis section with its materiality
+   * boundary, metrics, policies); agon-stats stamps it on the Result as `requirementsDigest`.
+   */
+  requirementsDigest: string;
 }
 
 export interface AnalysisOverrides {
@@ -61,6 +67,19 @@ export function buildAnalysisConfig(
       `control "${control}" is not one of the variants: ${Object.keys(config.target.variants).join(', ')}`,
     );
   }
+  // The receipt names the requirements the result is actually accepted under: the config's
+  // analysis section with every override that changes the decision applied.
+  const effective: Analysis = {
+    ...config.analysis,
+    ...(overrides.method === undefined ? {} : { method: overrides.method }),
+    ...(overrides.control === undefined ? {} : { control: overrides.control }),
+    ...(overrides.minSessionsPerVariant === undefined
+      ? {}
+      : { minSessionsPerVariant: overrides.minSessionsPerVariant }),
+    ...(overrides.calibrationProfile === undefined
+      ? {}
+      : { calibrationProfile: overrides.calibrationProfile }),
+  };
   return {
     runId: run.id,
     control,
@@ -72,6 +91,7 @@ export function buildAnalysisConfig(
     calibrationProfile: overrides.calibrationProfile ?? config.analysis.calibrationProfile,
     seed: overrides.seed ?? run.seed,
     metrics: config.metrics,
+    requirementsDigest: requirementsDigest({ ...config, analysis: effective }),
     ...(overrides.changeCategory === undefined ? {} : { changeCategory: overrides.changeCategory }),
     ...(overrides.trials === undefined ? {} : { trials: overrides.trials }),
     ...(overrides.sampleHash === undefined ? {} : { sampleHash: overrides.sampleHash }),

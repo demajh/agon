@@ -92,6 +92,9 @@ export function printResult(out: Output, result: Result, runDir: string): void {
   out.text(
     `  calibration: ${result.calibration.profile}${result.calibration.changeCategory ? ` (${result.calibration.changeCategory})` : ''}${accuracy === undefined ? '' : `, direction accuracy ${(accuracy * 100).toFixed(0)}%`} — ${result.calibration.note}`,
   );
+  out.text(
+    `  receipt: ${result.kind}${result.requirementsDigest ? ` under requirements ${result.requirementsDigest.slice(0, 12)}` : ''}, ${result.assumptions.length} assumption(s) recorded`,
+  );
   out.text(out.dim(`  result: ${join(runDir, 'result.json')}`));
 }
 

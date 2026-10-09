@@ -24,6 +24,9 @@ RESULT_KEYS = {
     "sessionsAnalyzed",
     "computedAt",
     "engine",
+    "kind",
+    "assumptions",
+    "requirementsDigest",
 }
 METRIC_RESULT_KEYS = {
     "metricId",
@@ -70,6 +73,7 @@ def analysis_config(**overrides: Any) -> dict[str, Any]:
         "calibrationProfile": "uncalibrated-v0",
         "seed": 0,
         "metrics": METRICS,
+        "requirementsDigest": "9c1e" * 16,
     }
     config.update(overrides)
     return config
@@ -137,6 +141,9 @@ def test_analyze_end_to_end_matches_the_result_schema_keys(tmp_path: Path) -> No
     assert result["sessionsAnalyzed"] == len(rows)
     assert ISO_Z.match(result["computedAt"])
     assert result["engine"] == {"name": "agon-stats", "version": __version__}
+    assert result["kind"] == "model"
+    assert result["requirementsDigest"] == "9c1e" * 16
+    assert any("simulated" in a for a in result["assumptions"])
     assert set(result["decision"]) <= {"verdict", "variant", "rationale"}
     assert result["decision"]["verdict"] in {"ship", "kill", "continue", "inconclusive"}
     assert set(result["calibration"]) == {"profile", "note"}
@@ -266,6 +273,12 @@ def test_analyze_errors_are_json_on_stderr_with_exit_code_one(
     config_path.write_text(json.dumps(analysis_config(control="missing-variant")))
     assert main(["analyze", "--sessions", str(sessions), "--config", str(config_path)]) == 1
     assert json.loads(capsys.readouterr().err)["error"]["code"] == "config_error"
+
+    without_digest = analysis_config()
+    del without_digest["requirementsDigest"]
+    config_path.write_text(json.dumps(without_digest))
+    assert main(["analyze", "--sessions", str(sessions), "--config", str(config_path)]) == 1
+    assert "requirementsDigest" in json.loads(capsys.readouterr().err)["error"]["message"]
 
 
 def test_allocate_sums_to_one_and_respects_floor(capsys: pytest.CaptureFixture[str]) -> None:

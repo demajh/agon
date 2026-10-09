@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { IdSchema, SlugSchema, TimestampSchema, UnitSchema } from './common.js';
-import { AnalysisMethodSchema } from './analysis.js';
+import { AnalysisKindSchema, AnalysisMethodSchema } from './analysis.js';
 
 export const VariantStatsSchema = z.object({
   variant: SlugSchema,
@@ -76,5 +76,19 @@ export const ResultSchema = z.object({
   sessionsAnalyzed: z.number().int().nonnegative(),
   computedAt: TimestampSchema,
   engine: z.object({ name: z.string(), version: z.string() }),
+  kind: AnalysisKindSchema.default('model').describe(
+    'model: computed before release from simulated sessions (a rehearsal); measurement: the live window after release (an observation). Results of agon-stats analyze are always models',
+  ),
+  assumptions: z
+    .array(z.string())
+    .default([])
+    .describe('What a model result assumes; empty for a measurement'),
+  requirementsDigest: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Hash of the requirements this receipt was accepted under: the analysis section (materiality included), the metrics and the policies. Absent only on results computed before receipts existed; never rewritten',
+    ),
 });
 export type Result = z.infer<typeof ResultSchema>;

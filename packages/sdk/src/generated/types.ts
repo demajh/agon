@@ -982,6 +982,19 @@ export interface components {
                 clusterBy: ("persona" | "model" | "scenario")[];
                 /** @default uncalibrated-v0 */
                 calibrationProfile: string;
+                /**
+                 * @description The materiality boundary: output fields a decision may turn on. Versioned under the requirements digest every result carries; see docs/receipts-and-findings.md
+                 * @default {}
+                 */
+                materiality: {
+                    /**
+                     * @description Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total")
+                     * @default []
+                     */
+                    fields: string[];
+                    /** @description Why the boundary sits where it does, e.g. the incident that moved a field in */
+                    note?: string;
+                };
             };
             /** @default [] */
             export: ({
@@ -1404,6 +1417,19 @@ export interface components {
                 name: string;
                 version: string;
             };
+            /**
+             * @description model: computed before release from simulated sessions (a rehearsal); measurement: the live window after release (an observation). Results of agon-stats analyze are always models
+             * @default model
+             * @enum {string}
+             */
+            kind: "model" | "measurement";
+            /**
+             * @description What a model result assumes; empty for a measurement
+             * @default []
+             */
+            assumptions: string[];
+            /** @description Hash of the requirements this receipt was accepted under: the analysis section (materiality included), the metrics and the policies. Absent only on results computed before receipts existed; never rewritten */
+            requirementsDigest?: string;
         };
         /** @description `config` is the snapshot of the environment config at run time. */
         Run: {

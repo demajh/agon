@@ -5,6 +5,7 @@
 import type {
   ActResult,
   AgonConfig,
+  AnalysisKind,
   AnalysisMethod,
   AnalyticsProvider,
   CalibrationNote,
@@ -12,6 +13,8 @@ import type {
   DecisionStatus,
   DecisionTrace,
   EventSource,
+  Finding,
+  FindingStatus,
   Judgement,
   LedgerEvent,
   LedgerRole,
@@ -27,6 +30,7 @@ import type {
   SessionOutcome,
   SessionStatus,
   SquadScore,
+  Settlement,
   SquadStatus,
   TicketSource,
   VariantSpec,
@@ -110,6 +114,12 @@ export const LEDGER_EVENTS = [
   'promoted',
   'killed',
 ] as const satisfies readonly LedgerEvent[];
+export const RESULT_KINDS = ['model', 'measurement'] as const satisfies readonly AnalysisKind[];
+export const FINDING_STATUSES = [
+  'open',
+  'closed_fixed',
+  'closed_tolerated',
+] as const satisfies readonly FindingStatus[];
 /** Roles an API key can carry; the spec has no enum for these yet. */
 export const API_KEY_ROLES = ['observer', 'operator', 'squad'] as const;
 
@@ -125,6 +135,8 @@ export const decisionStatus = pgEnum('decision_status', DECISION_STATUSES);
 export const decisionActor = pgEnum('decision_actor', DECISION_ACTORS);
 export const ledgerRole = pgEnum('ledger_role', LEDGER_ROLES);
 export const ledgerEvent = pgEnum('ledger_event', LEDGER_EVENTS);
+export const resultKind = pgEnum('result_kind', RESULT_KINDS);
+export const findingStatus = pgEnum('finding_status', FINDING_STATUSES);
 export const apiKeyRole = pgEnum('api_key_role', API_KEY_ROLES);
 
 /** Every timestamp is `timestamptz`, read as a `Date` and exposed as an ISO string by the repos. */
@@ -305,7 +317,36 @@ export const results = pgTable('results', {
   sessionsAnalyzed: integer('sessions_analyzed').notNull(),
   computedAt: timestamptz('computed_at').notNull(),
   engine: jsonb('engine').$type<Result['engine']>().notNull(),
+  kind: resultKind('kind').notNull().default('model'),
+  assumptions: jsonb('assumptions').$type<string[]>().notNull().default([]),
+  /** Null only on results stored before receipts existed. */
+  requirementsDigest: text('requirements_digest'),
 });
+
+/**
+ * Findings name a receipt (a result) and carry the invariant an incident showed was missing.
+ * `receipt_id` is deliberately not a foreign key: a finding keeps naming its receipt even if the
+ * run's analysis is replaced. Findings are closed, never deleted.
+ */
+export const findings = pgTable(
+  'findings',
+  {
+    id: text('id').primaryKey(),
+    receiptId: text('receipt_id').notNull(),
+    invariant: text('invariant').notNull(),
+    impact: text('impact').notNull(),
+    closureOwner: text('closure_owner').notNull(),
+    status: findingStatus('status').notNull().default('open'),
+    settlement: jsonb('settlement').$type<Settlement>().notNull(),
+    requirementsDigest: text('requirements_digest'),
+    createdAt: timestamptz('created_at').notNull(),
+    closedAt: timestamptz('closed_at'),
+  },
+  (t) => [
+    index('findings_receipt_id_created_at_idx').on(t.receiptId, t.createdAt),
+    index('findings_status_idx').on(t.status),
+  ],
+);
 
 /**
  * Append-only governance log. `squad_id` is deliberately not a foreign key: a decision must keep
@@ -395,7 +436,9 @@ const enumsAreExhaustive: [
   Exhaustive<typeof DECISION_ACTORS, Decision['actor']>,
   Exhaustive<typeof LEDGER_ROLES, LedgerRole>,
   Exhaustive<typeof LEDGER_EVENTS, LedgerEvent>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true];
+  Exhaustive<typeof RESULT_KINDS, AnalysisKind>,
+  Exhaustive<typeof FINDING_STATUSES, Finding['status']>,
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true];
 void enumsAreExhaustive;
 
 export type EnvironmentRow = typeof environments.$inferSelect;
@@ -409,3 +452,4 @@ export type ResultRow = typeof results.$inferSelect;
 export type DecisionRow = typeof decisions.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type EvaluationLedgerRow = typeof evaluationLedger.$inferSelect;
+export type FindingRow = typeof findings.$inferSelect;

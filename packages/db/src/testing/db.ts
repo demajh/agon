@@ -98,6 +98,7 @@ export const ALL_TABLES = [
   schema.decisions,
   schema.apiKeys,
   schema.evaluationLedger,
+  schema.findings,
 ];
 
 export async function truncateAll(db: Db): Promise<void> {

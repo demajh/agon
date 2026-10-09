@@ -220,6 +220,7 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 | `alpha` | number |  | `0.05` |  |
 | `clusterBy` | array of `persona` \| `model` \| `scenario` |  | `["persona","model"]` | Grouping factors treated as clusters when estimating uncertainty |
 | `calibrationProfile` | string |  | `"uncalibrated-v0"` |  |
+| `materiality` | object |  | `{}` | The materiality boundary: output fields a decision may turn on. Versioned under the requirements digest every result carries; see docs/receipts-and-findings.md |
 
 ## `analysis.decision`
 
@@ -227,6 +228,13 @@ The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, t
 |---|---|---|---|---|
 | `shipIf` | number |  | `0.95` | P(best) at or above which the variant is a ship candidate |
 | `killIf` | number |  | `0.05` | P(best) at or below which the variant is a kill candidate |
+
+## `analysis.materiality`
+
+| field | type | required | default | description |
+|---|---|---|---|---|
+| `fields` | array of string |  | `[]` | Dotted paths of output fields that count as decision-relevant (e.g. "outcome", "metrics.activation", "response.total") |
+| `note` | string |  |  | Why the boundary sits where it does, e.g. the incident that moved a field in |
 
 ## `export[]` with `type: jsonl`
 

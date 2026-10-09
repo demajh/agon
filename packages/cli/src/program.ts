@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { personasListCommand, personasShowCommand } from './commands/personas.js';
 import { compareCommand } from './commands/compare.js';
+import { protectedPathsCommand, shadowDiffCommand } from './commands/gate.js';
+import { liveWindowCommand } from './commands/live-window.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
 import { ledgerCommand } from './commands/ledger.js';
@@ -202,6 +204,79 @@ export function createProgram(deps: ProgramDeps = {}): Command {
     .argument('<dir>', 'run directory (…/agon-out/<runId>) or an output directory (newest run)')
     .action((dir: string) => {
       exit(stallReportCommand(output(), { dir }));
+    });
+
+  const int = (v: string) => Number.parseInt(v, 10);
+  program
+    .command('live-window')
+    .description(
+      'Transition-matrix gate over a live window: did a transition improbable before the release become the most likely successor of its state (exit 0 passed, 2 fired, 3 too little data)',
+    )
+    .requiredOption(
+      '--baseline <file>',
+      'pre-release window JSON (LiveWindow), same capacity and grain',
+    )
+    .requiredOption('--live <file>', 'live window JSON (LiveWindow) recorded after the release')
+    .option('--buckets <file>', 'declared bucket edges JSON (default: baseline quantiles)')
+    .option('--percentile <p>', 'baseline bootstrap percentile to exceed (default 95)', Number)
+    .option(
+      '--min-transitions <n>',
+      'live transitions a state needs before it can fire (default 20)',
+      int,
+    )
+    .option(
+      '--decompose-above <share>',
+      'refine coarse states above this share of transitions (default 0.25)',
+      Number,
+    )
+    .option('--bootstrap-samples <n>', 'bootstrap replicates per window (default 1000)', int)
+    .option('--seed <n>', 'bootstrap seed (default 0)', int)
+    .option('-o, --out <file>', 'also write the report here')
+    .action(
+      async (opts: {
+        baseline: string;
+        live: string;
+        buckets?: string;
+        percentile?: number;
+        minTransitions?: number;
+        decomposeAbove?: number;
+        bootstrapSamples?: number;
+        seed?: number;
+        out?: string;
+      }) => {
+        exit(await liveWindowCommand(output(), opts));
+      },
+    );
+
+  const gate = program
+    .command('gate')
+    .description('Policy gates that run outside a session: protected_paths and shadow_diff');
+  gate
+    .command('protected-paths')
+    .description(
+      "Hash the diff base...head and check it against the config's protected_paths policies (exit 1 when blocked); --json prints the manifest a variant registration sends",
+    )
+    .argument('[file]', 'path to agon.yaml', 'agon.yaml')
+    .requiredOption(
+      '--base <ref>',
+      'base ref, e.g. origin/main (the diff starts at the merge base)',
+    )
+    .option('--head <ref>', 'head ref (default HEAD)')
+    .option('--repo <dir>', 'git repository (default the current directory)')
+    .action((file: string, opts: { base: string; head?: string; repo?: string }) => {
+      exit(protectedPathsCommand(output(), { file, ...opts }));
+    });
+  gate
+    .command('shadow-diff')
+    .description(
+      'Compare a control output with a variant output under a shadow_diff policy (exit 1 over budget)',
+    )
+    .argument('[file]', 'path to agon.yaml', 'agon.yaml')
+    .requiredOption('--control <file>', 'control output (JSON)')
+    .requiredOption('--variant <file>', 'variant output (JSON)')
+    .option('--policy <id>', 'shadow_diff policy id (default: the only one)')
+    .action(async (file: string, opts: { control: string; variant: string; policy?: string }) => {
+      exit(await shadowDiffCommand(output(), { file, ...opts }));
     });
 
   const personas = program.command('personas').description('Browse the built-in persona library');

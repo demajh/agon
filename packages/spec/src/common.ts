@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 
 /** Lowercase identifier used for user-chosen keys: variants, scenarios, metrics, personas. */
@@ -63,6 +63,7 @@ export const ID_PREFIXES = {
   squad: 'sqd',
   decision: 'dec',
   apiKey: 'key',
+  finding: 'fnd',
 } as const;
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
 
@@ -93,4 +94,35 @@ export function deterministicId(
 
 export function nowIso(): Timestamp {
   return new Date().toISOString();
+}
+
+/**
+ * JSON with object keys sorted at every level and `undefined` members dropped, so equal values
+ * serialize identically. Every hash Agon stamps on a record (the sample hash, the requirements
+ * digest, diff hashes) is computed over this form.
+ */
+export function canonicalJson(value: unknown): string {
+  const normalize = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(normalize);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>)
+          .filter(([, x]) => x !== undefined)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([k, x]) => [k, normalize(x)]),
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(normalize(value));
+}
+
+/** Hex SHA-256 of a string. */
+export function sha256Hex(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** Hex SHA-256 of a value's canonical JSON. */
+export function hashValue(value: unknown): string {
+  return sha256Hex(canonicalJson(value));
 }

@@ -1,4 +1,4 @@
-import { ValidationError } from '@agon/spec';
+import { CONTRACT_SCHEMA_VERSION, ValidationError } from '@agon/spec';
 import { describe, expect, it } from 'vitest';
 import {
   EXPERIMENT_KEY,
@@ -113,6 +113,13 @@ describe('PostHogExporter', () => {
         [`$feature/${EXPERIMENT_KEY}`]: event.properties.agon_variant,
       });
       expect(sent?.properties.agon_simulated).toBe(true);
+    }
+    // every capture carries the results contract stamp (docs/results-contract.md)
+    for (const e of wire) {
+      expect(e.properties).toMatchObject({
+        agon_schema_version: CONTRACT_SCHEMA_VERSION,
+        agon_required_set: 'agon.analytics_event.1',
+      });
     }
     expect(exporter.errors()).toEqual([]);
   });

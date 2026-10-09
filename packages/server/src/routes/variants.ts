@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   NotFoundError,
   type AgonConfig,
+  type ProtectedPathsVerdict,
 } from '@agon/spec';
 import { createRoute } from '@hono/zod-openapi';
 import { z } from 'zod';
@@ -15,7 +16,15 @@ import {
   VariantListSchema,
   VariantRef,
 } from '../schemas.js';
-import { BEARER, COMMON_ERRORS, NOT_FOUND, jsonContent, type App } from './shared.js';
+import { enforceProtectedPaths } from '../policies.js';
+import {
+  BEARER,
+  COMMON_ERRORS,
+  NOT_FOUND,
+  POLICY_BLOCKED,
+  jsonContent,
+  type App,
+} from './shared.js';
 
 const TAG = 'Variants';
 
@@ -26,7 +35,7 @@ export const registerVariantRoute = createRoute({
   operationId: 'registerVariant',
   summary: 'Register (or replace) a variant',
   description:
-    'Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad.',
+    'Upserts the variant and merges it into the environment config under `target.variants`, so the next run sees it. Squad keys may only register variants credited to their own squad. When the environment config has `protected_paths` policies, the request must carry the diff manifest (`diff`) unless the policy sets `requireManifest: false`; a diff that touches a protected path is refused with 403 `policy_blocked` unless an approval for its exact hash is recorded in the policy.',
   security: BEARER,
   request: {
     params: IdParamSchema,
@@ -39,6 +48,7 @@ export const registerVariantRoute = createRoute({
   responses: {
     201: jsonContent(VariantRef, 'The registered variant'),
     ...COMMON_ERRORS,
+    ...POLICY_BLOCKED,
     ...NOT_FOUND,
   },
 });
@@ -102,6 +112,26 @@ export function registerVariantRoutes(app: App, ctx: AppContext): void {
     }
     const squad = squadSlug === undefined ? undefined : await squads.findBySlug(ctx.db, squadSlug);
     if (squadSlug !== undefined && !squad) throw new NotFoundError('squad', squadSlug);
+
+    // protected_paths: checked against the declared diff before anything is stored.
+    let verdicts: ProtectedPathsVerdict[];
+    try {
+      verdicts = enforceProtectedPaths(environment.config, body.diff);
+    } catch (error) {
+      ctx.logger.warn(
+        { err: error, environmentId: environment.id, variant: body.name, by: principal.label },
+        'variant registration blocked by a protected_paths policy',
+      );
+      throw error;
+    }
+    for (const verdict of verdicts) {
+      if (verdict.enforcement === 'unchecked' || verdict.approval) {
+        ctx.logger.info(
+          { environmentId: environment.id, variant: body.name, verdict },
+          'protected_paths verdict',
+        );
+      }
+    }
 
     const gitRef = body.gitRef ?? body.spec.gitRef;
     const spec = {

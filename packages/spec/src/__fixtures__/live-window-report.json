@@ -1,0 +1,109 @@
+{
+  "kind": "measurement",
+  "schemaVersion": "2026-10-09.1",
+  "capacity": "4 replicas",
+  "grainMs": 10000,
+  "baseline": {
+    "samples": 600
+  },
+  "live": {
+    "samples": 320
+  },
+  "parameters": {
+    "percentile": 95.0,
+    "decomposeAbove": 0.25,
+    "minTransitions": 20,
+    "bootstrapSamples": 1000,
+    "seed": 0,
+    "buckets": "baseline-quantiles"
+  },
+  "states": 30,
+  "decomposed": ["latencyMs=..p90|retryRate=..p90|abandonmentRate=..p90|queueDepth=..p90"],
+  "gate": {
+    "status": "fired",
+    "statesTested": 4,
+    "liveLevel": 98.75,
+    "signals": [
+      {
+        "from": "latencyMs=p90..|retryRate=..p90|abandonmentRate=..p90|queueDepth=..p90",
+        "to": "latencyMs=p90..|retryRate=p90..|abandonmentRate=..p90|queueDepth=..p90",
+        "fromLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "..p90",
+          "abandonmentRate": "..p90",
+          "queueDepth": "..p90"
+        },
+        "toLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "p90..",
+          "abandonmentRate": "..p90",
+          "queueDepth": "..p90"
+        },
+        "liveProbability": 0.7142857142857143,
+        "liveLowerBound": 0.4044318181818182,
+        "runnerUpProbability": 0.08928571428571429,
+        "marginLowerBound": 0.20930232558139533,
+        "liveTransitions": 56,
+        "baselineProbability": 0.0,
+        "baselinePercentileValue": 0.0,
+        "baselineTransitions": 46,
+        "baselineSuccessor": "latencyMs=p50..p90|retryRate=p50..p90|abandonmentRate=..p50|queueDepth=..p50"
+      },
+      {
+        "from": "latencyMs=p90..|retryRate=p90..|abandonmentRate=..p90|queueDepth=..p90",
+        "to": "latencyMs=p90..|retryRate=p90..|abandonmentRate=p90..|queueDepth=p90..",
+        "fromLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "p90..",
+          "abandonmentRate": "..p90",
+          "queueDepth": "..p90"
+        },
+        "toLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "p90..",
+          "abandonmentRate": "p90..",
+          "queueDepth": "p90.."
+        },
+        "liveProbability": 0.9090909090909091,
+        "liveLowerBound": 0.7110671936758893,
+        "runnerUpProbability": 0.022727272727272728,
+        "marginLowerBound": 0.6131944444444445,
+        "liveTransitions": 44,
+        "baselineProbability": 0.0,
+        "baselinePercentileValue": 0.0,
+        "baselineTransitions": 1,
+        "baselineSuccessor": "latencyMs=..p50|retryRate=..p50|abandonmentRate=p50..p90|queueDepth=p50..p90"
+      },
+      {
+        "from": "latencyMs=p90..|retryRate=p90..|abandonmentRate=p90..|queueDepth=p90..",
+        "to": "latencyMs=p90..|retryRate=..p90|abandonmentRate=..p90|queueDepth=..p90",
+        "fromLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "p90..",
+          "abandonmentRate": "p90..",
+          "queueDepth": "p90.."
+        },
+        "toLabel": {
+          "latencyMs": "p90..",
+          "retryRate": "..p90",
+          "abandonmentRate": "..p90",
+          "queueDepth": "..p90"
+        },
+        "liveProbability": 1.0,
+        "liveLowerBound": 1.0,
+        "runnerUpProbability": 0.0,
+        "marginLowerBound": 1.0,
+        "liveTransitions": 39,
+        "baselineProbability": 0.0,
+        "baselinePercentileValue": 0.0,
+        "baselineTransitions": 0,
+        "baselineSuccessor": null
+      }
+    ]
+  },
+  "computedAt": "2026-10-09T12:00:00.000Z",
+  "engine": {
+    "name": "agon-stats",
+    "version": "0.0.1"
+  }
+}

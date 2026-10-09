@@ -23,6 +23,11 @@ export const COMMON_ERRORS = {
 } as const;
 
 export const NOT_FOUND = { 404: error('No such resource (`not_found`)') } as const;
+export const POLICY_BLOCKED = {
+  403: error(
+    'The key role may not perform this operation (`forbidden`), or a policy gate refused it (`policy_blocked`)',
+  ),
+} as const;
 export const CONFLICT = {
   409: error('The operation conflicts with the current state (`conflict`)'),
 } as const;

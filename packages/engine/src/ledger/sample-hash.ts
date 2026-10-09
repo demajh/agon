@@ -1,6 +1,10 @@
-import { createHash } from 'node:crypto';
+import { canonicalJson, sha256Hex } from '@agon/spec';
 import type { AgonConfig, Persona, VariantSpec } from '@agon/spec';
 import type { ResolvedPersona } from '../population/personas.js';
+
+// Kept on the engine's surface for callers that imported it from here; it lives in @agon/spec now
+// so the requirements digest and the diff hashes share the same serialization.
+export { canonicalJson } from '@agon/spec';
 
 /**
  * Everything that defines the sample of simulated users and tasks a run evaluates against, and
@@ -17,23 +21,6 @@ export interface SampleIdentity {
   models: { user: string; judge: string | undefined; temperature: number };
   seed: number;
   size: number;
-}
-
-/** JSON with object keys sorted at every level, so equal values serialize identically. */
-export function canonicalJson(value: unknown): string {
-  const normalize = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(normalize);
-    if (v !== null && typeof v === 'object') {
-      return Object.fromEntries(
-        Object.entries(v as Record<string, unknown>)
-          .filter(([, x]) => x !== undefined)
-          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-          .map(([k, x]) => [k, normalize(x)]),
-      );
-    }
-    return v;
-  };
-  return JSON.stringify(normalize(value));
 }
 
 export function sampleIdentity(
@@ -58,13 +45,9 @@ export function sampleIdentity(
   };
 }
 
-function sha256(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
-}
-
 /** The stable hash the evaluation ledger is keyed by. */
 export function sampleHash(identity: SampleIdentity): string {
-  return sha256(canonicalJson(identity));
+  return sha256Hex(canonicalJson(identity));
 }
 
 /**
@@ -73,5 +56,5 @@ export function sampleHash(identity: SampleIdentity): string {
  */
 export function variantKey(name: string, spec: VariantSpec): string {
   const { url, image, command, env, headers, gitRef } = spec;
-  return `${name}@${sha256(canonicalJson({ url, image, command, env, headers, gitRef })).slice(0, 12)}`;
+  return `${name}@${sha256Hex(canonicalJson({ url, image, command, env, headers, gitRef })).slice(0, 12)}`;
 }

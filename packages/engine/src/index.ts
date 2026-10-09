@@ -86,3 +86,12 @@ export {
   type SampleIdentity,
 } from './ledger/sample-hash.js';
 export { DEFAULT_LEDGER_DIR, FileLedger } from './ledger/file-ledger.js';
+export {
+  SideEffectsGuard,
+  listProcesses,
+  sideEffectsEventProperties,
+  sideEffectsGuards,
+  snapshotFileTree,
+  type ProcessLister,
+  type SideEffectsOptions,
+} from './gates/side-effects.js';

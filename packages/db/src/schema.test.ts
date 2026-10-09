@@ -1,9 +1,11 @@
 import {
+  AnalysisKindSchema,
   AnalysisMethodSchema,
   AnalyticsProviderSchema,
   DecisionSchema,
   DecisionStatusSchema,
   EventSourceSchema,
+  FindingStatusSchema,
   LedgerEventSchema,
   LedgerRoleSchema,
   PolicyActionSchema,
@@ -51,6 +53,8 @@ describe('schema enums', () => {
     ['decision_actor', schema.decisionActor, DecisionSchema.shape.actor],
     ['ledger_role', schema.ledgerRole, LedgerRoleSchema],
     ['ledger_event', schema.ledgerEvent, LedgerEventSchema],
+    ['result_kind', schema.resultKind, AnalysisKindSchema],
+    ['finding_status', schema.findingStatus, FindingStatusSchema],
   ] as const)('%s lists exactly the spec values, in order', (name, pgEnum, zodEnum) => {
     expect(pgEnum.enumName).toBe(name);
     expect([...pgEnum.enumValues]).toEqual(zodEnum.options);
@@ -71,6 +75,7 @@ describe('schema tables', () => {
       schema.decisions,
       schema.apiKeys,
       schema.evaluationLedger,
+      schema.findings,
     ].map((table) => getTableName(table));
     expect(names).toEqual([
       'environments',
@@ -84,6 +89,7 @@ describe('schema tables', () => {
       'decisions',
       'api_keys',
       'evaluation_ledger',
+      'findings',
     ]);
   });
 });

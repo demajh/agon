@@ -32,6 +32,7 @@ import {
 import { perceptionLimitsFor, pruneObservation } from '../agent/perception.js';
 import { buildStepMessage, buildSystemPrompt, summarizeStep } from '../agent/prompts.js';
 import { decideNextAction } from '../agent/user-agent.js';
+import { sideEffectsEventProperties, type SideEffectsGuard } from '../gates/side-effects.js';
 import type { SessionPlan } from '../population/sampler.js';
 import { createRng, hashSeed } from '../rng.js';
 import { runHook } from './hooks.js';
@@ -56,6 +57,12 @@ export interface SessionDeps {
    * finishes as failed with reason "cancelled".
    */
   signal?: AbortSignal | undefined;
+  /**
+   * The `side_effects` policy gates: snapshot, call, snapshot around the session (scope
+   * `session`) or around every tool call (scope `tool_call`). Each comparison is recorded as a
+   * `$agon_side_effects` event; the gate counts and records, it does not stop the session.
+   */
+  sideEffects?: readonly SideEffectsGuard[] | undefined;
 }
 
 export interface SessionInput {
@@ -182,6 +189,34 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
   let location = 'setup hook';
   let adapterSession: AdapterSession | undefined;
   let credentials: Record<string, string> | undefined;
+  const guards = deps.sideEffects ?? [];
+  const sessionGuards = guards.filter((g) => g.scope === 'session');
+  const toolCallGuards = guards.filter((g) => g.scope === 'tool_call');
+  // Snapshot, call, snapshot: the report is recorded as an event, never thrown.
+  const guarded = async <T>(
+    scoped: readonly SideEffectsGuard[],
+    call: () => Promise<T>,
+    extra: Record<string, unknown> = {},
+  ): Promise<T> => {
+    if (scoped.length === 0) return call();
+    const before = await Promise.all(scoped.map((g) => g.before()));
+    try {
+      return await call();
+    } finally {
+      const drafts: EventDraft[] = [];
+      for (const [i, guard] of scoped.entries()) {
+        try {
+          const report = await guard.after(before[i] as Awaited<ReturnType<typeof guard.before>>);
+          drafts.push(
+            inferred(INFERRED_EVENTS.sideEffects, sideEffectsEventProperties(report, extra)),
+          );
+        } catch (error) {
+          log.warn({ err: error, policy: guard.policy.id }, 'side-effects snapshot failed');
+        }
+      }
+      await emit(drafts);
+    }
+  };
   const hookEnv: Record<string, string> = {
     AGON_RUN_ID: runId,
     AGON_SESSION_ID: session.id,
@@ -190,6 +225,7 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
     ...variantSpec.env,
   };
 
+  let sessionBefore: Awaited<ReturnType<SideEffectsGuard['before']>>[] | undefined;
   try {
     if (config.target.session.setup) {
       const hook = await runHook(config.target.session.setup, {
@@ -199,6 +235,10 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       });
       credentials = hook.output;
       hookEnv.AGON_CREDENTIALS = JSON.stringify(credentials);
+    }
+    if (sessionGuards.length > 0) {
+      location = 'side-effects snapshot';
+      sessionBefore = await Promise.all(sessionGuards.map((g) => g.before()));
     }
     location = 'adapter open';
     adapterSession = await deps.adapter.open(variantSpec, {
@@ -298,6 +338,12 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
         result = { ok: false, error: `there is no ${action.ref} on this page`, navigated: false };
       } else if (action.type === 'give_up' || action.type === 'done') {
         result = { ok: true, navigated: false };
+      } else if (action.type === 'tool_call' && toolCallGuards.length > 0) {
+        const target = adapterSession;
+        result = await guarded(toolCallGuards, () => target.act(action), {
+          tool: action.ref,
+          step: stepIndex + 1,
+        });
       } else {
         result = await adapterSession.act(action);
         if (kind === 'web' && action.type === 'click' && result.ok) {
@@ -433,6 +479,21 @@ export async function runSession(input: SessionInput, deps: SessionDeps): Promis
       } catch (error) {
         log.warn({ err: error }, 'failed to close adapter session');
       }
+    }
+    if (sessionBefore !== undefined) {
+      // The session's own effects, measured before the teardown hook is allowed to clean up.
+      const drafts: EventDraft[] = [];
+      for (const [i, guard] of sessionGuards.entries()) {
+        const before = sessionBefore[i];
+        if (before === undefined) continue;
+        try {
+          const report = await guard.after(before);
+          drafts.push(inferred(INFERRED_EVENTS.sideEffects, sideEffectsEventProperties(report)));
+        } catch (error) {
+          log.warn({ err: error, policy: guard.policy.id }, 'side-effects snapshot failed');
+        }
+      }
+      await emit(drafts);
     }
     if (config.target.session.teardown) {
       try {

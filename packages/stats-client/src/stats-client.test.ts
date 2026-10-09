@@ -1,12 +1,20 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AgonConfigSchema, SessionSchema, type Session } from '@agon/spec';
+import {
+  AgonConfigSchema,
+  LIVE_WINDOW_SERIES,
+  SessionSchema,
+  requirementsDigest,
+  type LiveWindowInput,
+  type Session,
+} from '@agon/spec';
 import { describe, expect, it } from 'vitest';
 import {
   allocateSquads,
   analyzeSessions,
   buildAnalysisConfig,
+  liveWindowGate,
   resolveStatsBinary,
   statsVersion,
 } from './index.js';
@@ -105,6 +113,25 @@ describe('buildAnalysisConfig', () => {
       buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { control: 'nope' }),
     ).toThrow(/control "nope"/);
   });
+
+  it('digests the requirements the result is accepted under, overrides included', () => {
+    const plain = buildAnalysisConfig(config, { id: 'run_x', seed: 7 });
+    expect(plain.requirementsDigest).toBe(requirementsDigest(config));
+    // the seed and the change category do not decide acceptance
+    expect(
+      buildAnalysisConfig(config, { id: 'run_y', seed: 9 }, { seed: 3, changeCategory: 'copy' })
+        .requirementsDigest,
+    ).toBe(plain.requirementsDigest);
+    const fixed = buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { method: 'fixed' });
+    expect(fixed.requirementsDigest).toBe(
+      requirementsDigest({ ...config, analysis: { ...config.analysis, method: 'fixed' } }),
+    );
+    expect(fixed.requirementsDigest).not.toBe(plain.requirementsDigest);
+    expect(
+      buildAnalysisConfig(config, { id: 'run_x', seed: 7 }, { minSessionsPerVariant: 1 })
+        .requirementsDigest,
+    ).not.toBe(plain.requirementsDigest);
+  });
 });
 
 describe('resolveStatsBinary', () => {
@@ -121,6 +148,61 @@ describe('resolveStatsBinary', () => {
     );
   });
 });
+
+/** mulberry32: a small seeded generator, so the windows below are the same on every run. */
+function generator(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A healthy service: noise around a flat level. */
+function calmWindow(seed: number, n: number): LiveWindowInput {
+  const uniform = generator(seed);
+  const normal = () => Math.sqrt(-2 * Math.log(1 - uniform())) * Math.cos(2 * Math.PI * uniform());
+  const clip = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+  const series = { latencyMs: [], retryRate: [], abandonmentRate: [], queueDepth: [] } as Record<
+    (typeof LIVE_WINDOW_SERIES)[number],
+    number[]
+  >;
+  for (let i = 0; i < n; i++) {
+    series.latencyMs.push(Math.max(1, 100 + 8 * normal()));
+    series.retryRate.push(clip(0.01 + 0.004 * normal(), 0, 1));
+    series.abandonmentRate.push(clip(0.02 + 0.005 * normal(), 0, 1));
+    series.queueDepth.push(Math.max(0, Math.round(3 + 1.7 * normal())));
+  }
+  return { capacity: '4 replicas', grainMs: 10_000, series };
+}
+
+/** Calm, then the loop: latency up, retries up, the queue up, again, one phase per interval. */
+function stormWindow(seed: number): LiveWindowInput {
+  const window = calmWindow(seed, 200);
+  const loop = [
+    [300, 0.005, 0.015, 2],
+    [350, 0.3, 0.015, 2],
+    [420, 0.4, 0.05, 40],
+  ] as const;
+  for (let cycle = 0; cycle < 40; cycle++) {
+    for (const [latency, retry, abandonment, queue] of loop) {
+      window.series.latencyMs.push(latency + (cycle % 5));
+      window.series.retryRate.push(retry);
+      window.series.abandonmentRate.push(abandonment);
+      window.series.queueDepth.push(queue);
+    }
+  }
+  return window;
+}
+
+function writeWindow(dir: string, name: string, window: LiveWindowInput): string {
+  const path = join(dir, `${name}.json`);
+  writeFileSync(path, JSON.stringify(window));
+  return path;
+}
 
 const skip = process.env['AGON_SKIP_STATS_TESTS'] === '1';
 
@@ -167,6 +249,42 @@ describe.skipIf(skip)('agon-stats subprocess', () => {
         analysis: { ...buildAnalysisConfig(config, { id: 'run_t', seed: 1 }), control: 'ghost' },
       }),
     ).rejects.toThrow(/agon-stats/);
+  }, 120_000);
+
+  it('runs the live-window gate and validates the measurement it returns', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agon-live-window-'));
+    const baselinePath = writeWindow(dir, 'baseline', calmWindow(1, 600));
+    const calm = await liveWindowGate({
+      baselinePath,
+      livePath: writeWindow(dir, 'calm', calmWindow(2, 600)),
+    });
+    expect(calm.kind).toBe('measurement');
+    expect(calm.gate.status).toBe('passed');
+    expect(calm.gate.statesTested).toBeGreaterThan(0);
+
+    const outPath = join(dir, 'report.json');
+    const storm = await liveWindowGate({
+      baselinePath,
+      livePath: writeWindow(dir, 'storm', stormWindow(3)),
+      percentile: 99,
+      seed: 5,
+      outPath,
+    });
+    expect(storm.gate.status).toBe('fired');
+    expect(storm.parameters).toMatchObject({ percentile: 99, seed: 5 });
+    const up = (label: Record<string, string>) =>
+      LIVE_WINDOW_SERIES.filter((s) => label[s]?.startsWith('p9')).join('+');
+    expect(storm.gate.signals.map((s) => `${up(s.fromLabel)} -> ${up(s.toLabel)}`).sort()).toEqual([
+      'latencyMs -> latencyMs+retryRate',
+      'latencyMs+retryRate -> latencyMs+retryRate+abandonmentRate+queueDepth',
+      'latencyMs+retryRate+abandonmentRate+queueDepth -> latencyMs',
+    ]);
+    expect(JSON.parse((await import('node:fs')).readFileSync(outPath, 'utf8')).gate.status).toBe(
+      'fired',
+    );
+    await expect(
+      liveWindowGate({ baselinePath, livePath: join(dir, 'missing.json') }),
+    ).rejects.toThrow(/live file not found/);
   }, 120_000);
 
   it('allocates squads with a floor', async () => {

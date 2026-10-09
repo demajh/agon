@@ -5,7 +5,16 @@ import { createWebAdapter } from '@agon/adapters';
 import { Output, compareCommand, runCommand, traceCommand } from '@agon/cli';
 import { FakeLlm } from '@agon/engine/fakes';
 import { JSONL_FILES } from '@agon/exporters';
-import { AgonEventSchema, ResultSchema, RunSchema, SessionSchema, StepSchema } from '@agon/spec';
+import {
+  AgonEventSchema,
+  CONTRACT_SCHEMA_VERSION,
+  ResultSchema,
+  RunSchema,
+  SessionSchema,
+  StepSchema,
+  readStamp,
+  requirementsDigest,
+} from '@agon/spec';
 import type { AgonEvent, Result, Session, Step } from '@agon/spec';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startAnalyticsSink, startDemoApp } from './demo.js';
@@ -236,6 +245,22 @@ describe('agon run → trace → compare on the live demo app', () => {
       expect(printed).toContain('activation*');
       expect(printed).toContain(`calibration: ${result.calibration.profile}`);
       expect(printed).toContain(result.calibration.note);
+
+      // the result is a receipt: a model, accepted under the run's requirements, stamped like
+      // every other exported row
+      expect(readStamp(JSON.parse(readFileSync(resultPath, 'utf8')))).toEqual({
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        requiredSet: 'agon.result.1',
+      });
+      expect(result.kind).toBe('model');
+      expect(result.assumptions.length).toBeGreaterThan(0);
+      // the receipt names the requirements compare applied, --min-sessions 1 included
+      const accepted = requirementsDigest({
+        ...run.config,
+        analysis: { ...run.config.analysis, minSessionsPerVariant: 1 },
+      });
+      expect(result.requirementsDigest).toBe(accepted);
+      expect(printed).toContain(`receipt: model under requirements ${accepted.slice(0, 12)}`);
     },
   );
 });

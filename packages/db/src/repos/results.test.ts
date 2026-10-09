@@ -34,6 +34,29 @@ describeDb('results', () => {
     expect(await results.find(t.db, first.id)).toBeUndefined();
   });
 
+  it('keeps the receipt fields, and leaves the digest absent on a result stored before receipts', async () => {
+    const r = await run();
+    const receipt = makeResult(r, {
+      kind: 'model',
+      assumptions: ['sessions were simulated by LLM-driven personas'],
+      requirementsDigest: 'b'.repeat(64),
+    });
+    expect(await results.insert(t.db, receipt)).toEqual(receipt);
+    const stored = await results.getByRun(t.db, r.id);
+    expect(stored).toMatchObject({
+      kind: 'model',
+      assumptions: ['sessions were simulated by LLM-driven personas'],
+      requirementsDigest: 'b'.repeat(64),
+    });
+    const legacy = makeResult(await run());
+    expect(legacy.requirementsDigest).toBeUndefined();
+    const read = await results.insert(t.db, legacy);
+    expect(read).toEqual(legacy);
+    expect('requirementsDigest' in read).toBe(false);
+    expect(read.kind).toBe('model');
+    expect(read.assumptions).toEqual([]);
+  });
+
   it('reports missing results', async () => {
     const r = await run();
     expect(await results.findByRun(t.db, r.id)).toBeUndefined();

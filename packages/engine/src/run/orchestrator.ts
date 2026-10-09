@@ -23,6 +23,7 @@ import {
 } from '@agon/spec';
 import pino, { type Logger } from 'pino';
 import type { PatienceParams } from '../agent/patience.js';
+import { sideEffectsGuards, type ProcessLister } from '../gates/side-effects.js';
 import { sampleHash, sampleIdentity, variantKey } from '../ledger/sample-hash.js';
 import { resolvePersonas, type ResolvePersonaOptions } from '../population/personas.js';
 import { planSessions, type SessionPlan } from '../population/sampler.js';
@@ -48,6 +49,8 @@ export interface RunDeps {
   signal?: AbortSignal | undefined;
   /** Hard cap per session, in ms. Default 15 minutes. */
   sessionTimeoutMs?: number | undefined;
+  /** Process lister for `side_effects` policies that observe the process table (tests inject one). */
+  processes?: ProcessLister | undefined;
 }
 
 export interface RunOptions {
@@ -243,6 +246,7 @@ export async function runExperiment(
 
   const concurrency = Math.max(1, options.concurrency ?? effectiveConfig.defaults.maxConcurrency);
   const timeoutMs = deps.sessionTimeoutMs ?? 15 * 60_000;
+  const guards = sideEffectsGuards(effectiveConfig, { cwd, processes: deps.processes });
   const results: SessionResult[] = [];
   const failures: ClassifiedFailure[] = [];
   let cursor = 0;
@@ -270,6 +274,7 @@ export async function runExperiment(
               patience: deps.patience,
               cacheDecisions: deps.cacheDecisions,
               signal,
+              sideEffects: guards,
             },
           ),
           timeoutMs,

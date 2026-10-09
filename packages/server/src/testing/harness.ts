@@ -162,6 +162,9 @@ export function stubStats(
         sessionsAnalyzed: 4,
         computedAt: new Date().toISOString(),
         engine: { name: 'stub-stats', version: '0' },
+        kind: 'model',
+        assumptions: ['stubbed analysis; nothing was simulated'],
+        requirementsDigest: input.analysis.requirementsDigest,
       };
     },
     async allocate(scores: SquadScoreInput[], options = {}) {

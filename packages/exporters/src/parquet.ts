@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 import type { AgonEvent, Result, Run, Session, Step } from '@agon/spec';
+import { CONTRACT_SCHEMA_VERSION } from '@agon/spec';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import type { ColumnSource, KeyValue } from 'hyparquet-writer';
 import type { Exporter, ExporterContext, ParquetExportConfig } from './exporter.js';
@@ -45,6 +46,8 @@ export const SESSION_COLUMNS: readonly ParquetColumn<SessionRow>[] = [
   { name: 'judge_satisfaction', type: 'INT32', nullable: true },
   { name: 'judge_frustration', type: 'INT32', nullable: true },
   { name: 'metrics_json', type: 'STRING' },
+  { name: 'schema_version', type: 'STRING' },
+  { name: 'required_set', type: 'STRING' },
 ];
 
 export const EVENT_COLUMNS: readonly ParquetColumn<EventRow>[] = [
@@ -60,6 +63,8 @@ export const EVENT_COLUMNS: readonly ParquetColumn<EventRow>[] = [
   { name: 'persona_id', type: 'STRING' },
   { name: 'model', type: 'STRING' },
   { name: 'properties_json', type: 'STRING' },
+  { name: 'schema_version', type: 'STRING' },
+  { name: 'required_set', type: 'STRING' },
 ];
 
 export const EXPOSURE_COLUMNS: readonly ParquetColumn<ExposureRow>[] = [
@@ -68,6 +73,8 @@ export const EXPOSURE_COLUMNS: readonly ParquetColumn<ExposureRow>[] = [
   { name: 'variant', type: 'STRING' },
   { name: 'experiment_key', type: 'STRING' },
   { name: 'exposed_at', type: 'STRING', nullable: true },
+  { name: 'schema_version', type: 'STRING' },
+  { name: 'required_set', type: 'STRING' },
 ];
 
 export const METRIC_VALUE_COLUMNS: readonly ParquetColumn<MetricValueRow>[] = [
@@ -76,6 +83,8 @@ export const METRIC_VALUE_COLUMNS: readonly ParquetColumn<MetricValueRow>[] = [
   { name: 'variant', type: 'STRING' },
   { name: 'metric_id', type: 'STRING' },
   { name: 'value', type: 'DOUBLE' },
+  { name: 'schema_version', type: 'STRING' },
+  { name: 'required_set', type: 'STRING' },
 ];
 
 /** Transposes rows into hyparquet-writer's column API with explicit types (so empty tables keep their schema). */
@@ -241,6 +250,7 @@ export class ParquetExporter implements Exporter {
       { key: 'agon_simulated', value: 'true' },
       { key: 'agon_run_id', value: this.ctx.runId },
       { key: 'agon_experiment', value: this.ctx.experimentName },
+      { key: 'agon_schema_version', value: CONTRACT_SCHEMA_VERSION },
     ];
   }
 }

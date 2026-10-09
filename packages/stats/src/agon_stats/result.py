@@ -17,6 +17,24 @@ from agon_stats.io import SessionRow
 ENGINE_NAME = "agon-stats"
 
 
+def model_assumptions(config: AnalysisConfig, sessions: int) -> list[str]:
+    """What a pre-release result assumes. Every `analyze` result is a model, never a measurement."""
+    units = (
+        "sessions sharing a " + " x ".join(config.cluster_by) + " cell are treated as one cluster"
+        if config.cluster_by
+        else "every session is treated as an independent user"
+    )
+    return [
+        "Sessions were simulated by LLM-driven personas against a fixed scenario set; the result "
+        "forecasts user behaviour and is not an observation of it.",
+        f"Calibration profile {config.calibration_profile!r} supplies the benchmark status of that "
+        "forecast; see calibration.note.",
+        f"Uncertainty: {units} ({sessions} sessions analyzed).",
+        f"Trials: M={max(1, config.trials)} variant(s) counted against the sample; the count is as "
+        "complete as the evaluation ledger that supplied it.",
+    ]
+
+
 def result_id_for(run_id: str) -> str:
     """``res_<suffix>``: the run id without its prefix (``run_abc`` -> ``res_abc``)."""
     suffix = run_id.split("_", 1)[1] if "_" in run_id else run_id
@@ -62,4 +80,7 @@ def build_result(
         "sessionsAnalyzed": len(usable),
         "computedAt": computed_at or now_iso(),
         "engine": {"name": ENGINE_NAME, "version": __version__},
+        "kind": "model",
+        "assumptions": model_assumptions(config, len(usable)),
+        "requirementsDigest": config.requirements_digest,
     }

@@ -1,6 +1,13 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { AgonEventSchema, SessionSchema, StepSchema, ValidationError } from '@agon/spec';
+import {
+  AgonEventSchema,
+  CONTRACT_SCHEMA_VERSION,
+  SessionSchema,
+  StepSchema,
+  ValidationError,
+  readStamp,
+} from '@agon/spec';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   RUN_ID,
@@ -59,6 +66,12 @@ describe('JsonlExporter', () => {
     const sessions = await readLines(join(runDir, JSONL_FILES.sessions));
     expect(sessions).toHaveLength(3);
     expect(sessions.map((s) => SessionSchema.parse(s))).toEqual(data.sessions);
+    // every row is stamped with the contract (docs/results-contract.md)
+    for (const s of sessions)
+      expect(readStamp(s)).toEqual({
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        requiredSet: 'agon.session.1',
+      });
 
     const steps = await readLines(join(runDir, JSONL_FILES.steps));
     expect(steps).toHaveLength(6);
@@ -76,6 +89,11 @@ describe('JsonlExporter', () => {
       id: string;
     };
     expect(result.id).toBe(data.result?.id);
+    expect(readStamp(result)).toEqual({
+      schemaVersion: CONTRACT_SCHEMA_VERSION,
+      requiredSet: 'agon.result.1',
+    });
+    for (const line of [...steps, ...events]) expect(readStamp(line)).toBeDefined();
   });
 
   it('writes a manifest listing files with row counts', async () => {
@@ -86,7 +104,16 @@ describe('JsonlExporter', () => {
     const manifest = JSON.parse(
       await readFile(join(dir, RUN_ID, JSONL_FILES.manifest), 'utf8'),
     ) as JsonlManifest;
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
+    expect(manifest.contract).toEqual({
+      schemaVersion: CONTRACT_SCHEMA_VERSION,
+      requiredSets: {
+        sessions: 'agon.session.1',
+        steps: 'agon.step.1',
+        events: 'agon.event.1',
+        result: 'agon.result.1',
+      },
+    });
     expect(manifest.runId).toBe(RUN_ID);
     const rows = Object.fromEntries(manifest.files.map((f) => [f.file, f.rows]));
     expect(rows).toEqual({

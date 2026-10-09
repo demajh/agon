@@ -1,5 +1,5 @@
-import type { AgonEvent, Session } from '@agon/spec';
-import { SCENARIO_SUCCESS_METRIC_ID } from '@agon/spec';
+import type { AgonEvent, Session, WarehouseStamp } from '@agon/spec';
+import { SCENARIO_SUCCESS_METRIC_ID, stampWarehouseRow } from '@agon/spec';
 import { readMarkers } from './exporter.js';
 
 /**
@@ -7,8 +7,13 @@ import { readMarkers } from './exporter.js';
  * `agon_metric_values`). Timestamps are ISO-8601 strings for portability across loaders.
  * The exposure and metric-value shapes follow the assignment/metric-source tables that
  * GrowthBook and Statsig read in warehouse-native mode.
+ *
+ * Every row carries the results contract stamp (`schema_version`, `required_set`): the id of the
+ * field list a consumer may rely on, resolved through the registry in `@agon/spec`
+ * (docs/results-contract.md). Row builders stamp at write time and refuse to stamp a row that
+ * lacks a field of its set.
  */
-export interface SessionRow {
+export interface SessionRow extends WarehouseStamp {
   session_id: string;
   run_id: string;
   index: number;
@@ -32,7 +37,7 @@ export interface SessionRow {
   metrics_json: string;
 }
 
-export interface EventRow {
+export interface EventRow extends WarehouseStamp {
   event_id: string;
   run_id: string;
   session_id: string;
@@ -48,7 +53,7 @@ export interface EventRow {
   properties_json: string;
 }
 
-export interface ExposureRow {
+export interface ExposureRow extends WarehouseStamp {
   session_id: string;
   run_id: string;
   variant: string;
@@ -56,7 +61,7 @@ export interface ExposureRow {
   exposed_at: string | null;
 }
 
-export interface MetricValueRow {
+export interface MetricValueRow extends WarehouseStamp {
   session_id: string;
   run_id: string;
   variant: string;
@@ -65,7 +70,7 @@ export interface MetricValueRow {
 }
 
 export function sessionRow(session: Session): SessionRow {
-  return {
+  return stampWarehouseRow('session_row', {
     session_id: session.id,
     run_id: session.runId,
     index: session.index,
@@ -86,13 +91,13 @@ export function sessionRow(session: Session): SessionRow {
     judge_satisfaction: session.judgement?.satisfaction ?? null,
     judge_frustration: session.judgement?.frustration ?? null,
     metrics_json: JSON.stringify(session.metrics),
-  };
+  });
 }
 
 /** Throws `ValidationError` for an event without simulation markers. */
 export function eventRow(event: AgonEvent): EventRow {
   const markers = readMarkers(event);
-  return {
+  return stampWarehouseRow('event_row', {
     event_id: event.id,
     run_id: event.runId,
     session_id: event.sessionId,
@@ -105,17 +110,17 @@ export function eventRow(event: AgonEvent): EventRow {
     persona_id: markers.agon_persona,
     model: markers.agon_model,
     properties_json: JSON.stringify(event.properties),
-  };
+  });
 }
 
 export function exposureRow(session: Session, experimentKey: string): ExposureRow {
-  return {
+  return stampWarehouseRow('exposure_row', {
     session_id: session.id,
     run_id: session.runId,
     variant: session.variant,
     experiment_key: experimentKey,
     exposed_at: session.startedAt ?? null,
-  };
+  });
 }
 
 /**
@@ -126,11 +131,15 @@ export function metricValueRows(session: Session): MetricValueRow[] {
   const base = { session_id: session.id, run_id: session.runId, variant: session.variant };
   const rows = Object.entries(session.metrics)
     .filter(([metricId]) => metricId !== SCENARIO_SUCCESS_METRIC_ID)
-    .map(([metricId, value]) => ({ ...base, metric_id: metricId, value }));
-  rows.push({
-    ...base,
-    metric_id: SCENARIO_SUCCESS_METRIC_ID,
-    value: session.outcome === 'success' ? 1 : 0,
-  });
+    .map(([metricId, value]) =>
+      stampWarehouseRow('metric_value_row', { ...base, metric_id: metricId, value }),
+    );
+  rows.push(
+    stampWarehouseRow('metric_value_row', {
+      ...base,
+      metric_id: SCENARIO_SUCCESS_METRIC_ID,
+      value: session.outcome === 'success' ? 1 : 0,
+    }),
+  );
   return rows;
 }

@@ -19,7 +19,9 @@ Shape (camelCase; snake_case aliases are accepted for hand-written files)::
       "mixtureVarianceScale": 0.01,         // optional: mSPRT tau^2 as a fraction of sigma^2
       "trials": 1,                          // optional: M, distinct variants ever evaluated
                                             //   against the sample (evaluation ledger count)
-      "sampleHash": "3f9a2c1d..."           // optional: the sample the ledger is keyed by
+      "sampleHash": "3f9a2c1d...",          // optional: the sample the ledger is keyed by
+      "requirementsDigest": "9c1e..."       // required: hash of the requirements the result is
+                                            //   accepted under; echoed on the Result as a receipt
     }
 """
 
@@ -45,6 +47,8 @@ _MISSING = object()
 @dataclass(frozen=True, slots=True)
 class AnalysisConfig:
     run_id: str
+    requirements_digest: str
+    """Hash of the requirements (analysis, metrics, policies) the result is accepted under."""
     metrics: tuple[MetricSpec, ...] = ()
     control: str | None = None
     method: Method = "bayesian"
@@ -105,6 +109,13 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
     if sample_hash is not None and (not isinstance(sample_hash, str) or not sample_hash):
         raise ConfigError("sampleHash must be a non-empty string")
 
+    requirements_digest = _pick(obj, "requirementsDigest", "requirements_digest")
+    if not isinstance(requirements_digest, str) or not requirements_digest:
+        raise ConfigError(
+            "requirementsDigest is required: the hash of the analysis section, metrics and "
+            "policies the result is accepted under (results are receipts)"
+        )
+
     metrics_raw = _pick(obj, "metrics", default=[])
     if not isinstance(metrics_raw, list):
         raise ConfigError("metrics must be a list")
@@ -120,6 +131,7 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
 
     return AnalysisConfig(
         run_id=run_id,
+        requirements_digest=requirements_digest,
         metrics=metrics,
         control=control,
         method=method,

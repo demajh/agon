@@ -3,14 +3,14 @@ import type { Result } from '@agon/spec';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../client.js';
 import { guard } from '../errors.js';
-import { first, parseRow, toDate, toIso } from '../internal.js';
+import { compact, first, parseRow, toDate, toIso } from '../internal.js';
 import { results } from '../schema.js';
 import type { ResultRow } from '../schema.js';
 
 export function toResult(row: ResultRow): Result {
   return parseRow(
     ResultSchema,
-    {
+    compact({
       id: row.id,
       runId: row.runId,
       method: row.method,
@@ -22,7 +22,10 @@ export function toResult(row: ResultRow): Result {
       sessionsAnalyzed: row.sessionsAnalyzed,
       computedAt: toIso(row.computedAt),
       engine: row.engine,
-    },
+      kind: row.kind,
+      assumptions: row.assumptions,
+      requirementsDigest: row.requirementsDigest ?? undefined,
+    }),
     'result',
     row.id,
   );
@@ -41,6 +44,9 @@ function toRow(result: Result) {
     sessionsAnalyzed: result.sessionsAnalyzed,
     computedAt: toDate(result.computedAt),
     engine: result.engine,
+    kind: result.kind,
+    assumptions: result.assumptions,
+    requirementsDigest: result.requirementsDigest ?? null,
   };
 }
 
@@ -70,6 +76,9 @@ export async function upsert(db: Db, result: Result): Promise<Result> {
           sessionsAnalyzed: row.sessionsAnalyzed,
           computedAt: row.computedAt,
           engine: row.engine,
+          kind: row.kind,
+          assumptions: row.assumptions,
+          requirementsDigest: row.requirementsDigest,
         },
       })
       .returning(),

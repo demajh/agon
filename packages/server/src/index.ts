@@ -49,6 +49,8 @@ export { rollingPBest, squadResultHistory } from './squads/history.js';
 export {
   COMPARISON_OPS,
   POLICY_VARIABLES,
+  checkProtectedPaths,
+  enforceProtectedPaths,
   evaluateCondition,
   evaluatePolicies,
   guardrailSkip,

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { variantKey } from '@agon/engine';
 import {
@@ -6,6 +6,7 @@ import {
   countTrials,
   isAgonError,
   nowIso,
+  stampRow,
   type Analysis,
   type LedgerEntry,
   type MetricResult,
@@ -92,6 +93,9 @@ export function printResult(out: Output, result: Result, runDir: string): void {
   out.text(
     `  calibration: ${result.calibration.profile}${result.calibration.changeCategory ? ` (${result.calibration.changeCategory})` : ''}${accuracy === undefined ? '' : `, direction accuracy ${(accuracy * 100).toFixed(0)}%`} — ${result.calibration.note}`,
   );
+  out.text(
+    `  receipt: ${result.kind}${result.requirementsDigest ? ` under requirements ${result.requirementsDigest.slice(0, 12)}` : ''}, ${result.assumptions.length} assumption(s) recorded`,
+  );
   out.text(out.dim(`  result: ${join(runDir, 'result.json')}`));
 }
 
@@ -121,11 +125,12 @@ export async function compareCommand(out: Output, options: CompareOptions): Prom
         sampleHash: run.sampleHash,
       },
     );
-    const result = await analyzeSessions({
-      sessionsPath,
-      analysis,
-      outPath: join(runDir, 'result.json'),
-    });
+    const result = await analyzeSessions({ sessionsPath, analysis });
+    // result.json is an exported row like the others: stamped with the results contract.
+    writeFileSync(
+      join(runDir, 'result.json'),
+      `${JSON.stringify(stampRow('result', result), null, 2)}\n`,
+    );
     const entry = verdictEntry(run, result);
     if (entry !== undefined) await ledger.append(entry);
     if (out.options.json) {

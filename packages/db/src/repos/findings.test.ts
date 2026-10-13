@@ -76,16 +76,26 @@ describeDb('findings', () => {
         createdAt: at(1),
       });
     const a = await open();
-    const fixed = await findings.close(t.db, a.id, 'closed_fixed', at(60));
-    expect(fixed).toMatchObject({ status: 'closed_fixed', closedAt: at(60) });
+    const fixed = await findings.close(
+      t.db,
+      a.id,
+      'closed_fixed',
+      { observedAt: at(59), observedUnder: 'v2.3.0' },
+      () => at(60),
+    );
+    expect(fixed).toMatchObject({
+      status: 'closed_fixed',
+      closedAt: at(60),
+      settlement: { ...SETTLEMENT, observedAt: at(59), observedUnder: 'v2.3.0' },
+    });
     await expect(findings.close(t.db, a.id, 'closed_tolerated')).rejects.toBeInstanceOf(
       ConflictError,
     );
     expect(await findings.get(t.db, a.id)).toEqual(fixed);
     const b = await open();
-    expect((await findings.close(t.db, b.id, 'closed_tolerated', at(61))).status).toBe(
-      'closed_tolerated',
-    );
+    const tolerated = await findings.close(t.db, b.id, 'closed_tolerated', {}, () => at(61));
+    expect(tolerated.status).toBe('closed_tolerated');
+    expect(tolerated.settlement).toEqual(SETTLEMENT);
     await expect(findings.close(t.db, 'fnd_missing', 'closed_fixed')).rejects.toBeInstanceOf(
       NotFoundError,
     );
@@ -105,7 +115,7 @@ describeDb('findings', () => {
         createdAt: at(i),
       });
     }
-    await findings.close(t.db, 'fnd_1', 'closed_fixed', at(10));
+    await findings.close(t.db, 'fnd_1', 'closed_fixed', {}, () => at(10));
     const page1 = await findings.list(t.db, { limit: 2 });
     expect(page1.items.map((f) => f.id)).toEqual(['fnd_4', 'fnd_3']);
     const page2 = await findings.list(t.db, { limit: 2, cursor: page1.nextCursor });

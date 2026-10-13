@@ -86,4 +86,30 @@ describe('findings', () => {
       ConflictError,
     );
   });
+
+  it("carries the observer's own stamp at close, never on an open finding", () => {
+    expect(() =>
+      FindingSchema.parse({
+        ...finding,
+        settlement: { ...finding.settlement, observedAt: finding.createdAt },
+      }),
+    ).toThrow(/open finding has no settlement observation/);
+    const closed = closeFinding(finding, 'closed_fixed', '2026-10-10T00:00:00.000Z', {
+      observedAt: '2026-10-09T23:00:00.000Z',
+      observedUnder: 'v1.4.2',
+    });
+    expect(closed.closedAt).toBe('2026-10-10T00:00:00.000Z');
+    expect(closed.settlement).toEqual({
+      ...finding.settlement,
+      observedAt: '2026-10-09T23:00:00.000Z',
+      observedUnder: 'v1.4.2',
+    });
+    const bare = closeFinding(finding, 'closed_tolerated', '2026-10-10T00:00:00.000Z');
+    expect(bare.settlement).toEqual(finding.settlement);
+    expect(() =>
+      closeFinding(finding, 'closed_fixed', '2026-10-10T00:00:00.000Z', {
+        observedAt: 'yesterday',
+      }),
+    ).toThrow();
+  });
 });

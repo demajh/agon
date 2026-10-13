@@ -10,6 +10,8 @@ Shape (camelCase; snake_case aliases are accepted for hand-written files)::
       "decision": { "shipIf": 0.95, "killIf": 0.05 },
       "alpha": 0.05,
       "clusterBy": ["persona", "model"],    // subset of persona | model | scenario; [] = iid
+      "stratifyBy": ["persona"],            // optional: factors whose levels get their own
+                                            //   effect estimate plus a heterogeneity statistic
       "calibrationProfile": "uncalibrated-v0",
       "changeCategory": "copy",             // optional
       "seed": 0,
@@ -57,6 +59,8 @@ class AnalysisConfig:
     kill_if: float = 0.05
     alpha: float = 0.05
     cluster_by: tuple[str, ...] = DEFAULT_CLUSTER_BY
+    stratify_by: tuple[str, ...] = ()
+    """Factors whose levels each get their own effect estimate; reporting only."""
     calibration_profile: str = DEFAULT_CALIBRATION_PROFILE
     change_category: str | None = None
     seed: int = 0
@@ -94,6 +98,13 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
     ):
         raise ConfigError(f"clusterBy must be a list drawn from {list(CLUSTER_FACTORS)}")
     cluster_by = tuple(dict.fromkeys(cluster_by_raw))  # dedupe, keep order
+
+    stratify_by_raw = _pick(obj, "stratifyBy", "stratify_by", default=[])
+    if not isinstance(stratify_by_raw, list) or any(
+        factor not in CLUSTER_FACTORS for factor in stratify_by_raw
+    ):
+        raise ConfigError(f"stratifyBy must be a list drawn from {list(CLUSTER_FACTORS)}")
+    stratify_by = tuple(dict.fromkeys(stratify_by_raw))
 
     calibration_profile = _pick(
         obj, "calibrationProfile", "calibration_profile", default=DEFAULT_CALIBRATION_PROFILE
@@ -144,6 +155,7 @@ def parse_config(obj: Mapping[str, Any]) -> AnalysisConfig:
         kill_if=_unit(_pick(decision, "killIf", "kill_if", default=0.05), "decision.killIf"),
         alpha=_alpha(_pick(obj, "alpha", default=0.05)),
         cluster_by=cluster_by,
+        stratify_by=stratify_by,
         calibration_profile=calibration_profile,
         change_category=change_category,
         seed=_int(_pick(obj, "seed", default=0), "seed", minimum=0),

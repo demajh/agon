@@ -980,6 +980,8 @@ export interface components {
                  *     ]
                  */
                 clusterBy: ("persona" | "model" | "scenario")[];
+                /** @description Factors whose levels each get their own effect estimate with its interval and session counts; the pooled effect is then reported together with a heterogeneity statistic (Cochran's Q, I²). Reporting only: the decision still uses the pooled result */
+                stratifyBy?: ("persona" | "model" | "scenario")[];
                 /** @default uncalibrated-v0 */
                 calibrationProfile: string;
                 /**
@@ -1527,6 +1529,57 @@ export interface components {
                     model: number;
                     scenario?: number;
                     residual: number;
+                };
+                stratification?: {
+                    by: ("persona" | "model" | "scenario")[];
+                    strata: {
+                        /** @description The factor levels that define the stratum, e.g. { persona: "smb-owner" } */
+                        levels: {
+                            [key: string]: string;
+                        };
+                        sessions: number;
+                        variants: {
+                            variant: string;
+                            sessions: number;
+                            mean: number;
+                        }[];
+                        /** @description One per treatment with at least two sessions in both arms of the stratum */
+                        comparisons: {
+                            variant: string;
+                            control: string;
+                            /** @description Variant mean minus control mean within the stratum */
+                            difference: number;
+                            differenceCi95: [
+                                number,
+                                number
+                            ];
+                            /** @description Relative lift of variant over control within the stratum */
+                            lift: number;
+                            liftCi95: [
+                                number,
+                                number
+                            ];
+                        }[];
+                    }[];
+                    /** @description One per treatment with at least two estimable strata */
+                    heterogeneity: {
+                        variant: string;
+                        control: string;
+                        /** @description Strata with an estimable difference */
+                        strata: number;
+                        /** @description Inverse-variance weighted difference across those strata (fixed effect) */
+                        pooledDifference: number;
+                        pooledDifferenceCi95: [
+                            number,
+                            number
+                        ];
+                        /** @description Cochran's Q */
+                        q: number;
+                        df: number;
+                        pValue: number;
+                        /** @description Share of the variation across strata beyond sampling noise */
+                        iSquared: number;
+                    }[];
                 };
                 /** @default [] */
                 warnings: string[];

@@ -30,6 +30,8 @@ export interface AnalysisConfig {
   decision: Analysis['decision'];
   alpha: number;
   clusterBy: Analysis['clusterBy'];
+  /** Factors whose levels get their own effect estimate, with a heterogeneity statistic. */
+  stratifyBy?: Analysis['stratifyBy'];
   calibrationProfile: string;
   seed: number;
   metrics: Metric[];
@@ -88,6 +90,7 @@ export function buildAnalysisConfig(
     decision: config.analysis.decision,
     alpha: config.analysis.alpha,
     clusterBy: config.analysis.clusterBy,
+    ...(config.analysis.stratifyBy === undefined ? {} : { stratifyBy: config.analysis.stratifyBy }),
     calibrationProfile: overrides.calibrationProfile ?? config.analysis.calibrationProfile,
     seed: overrides.seed ?? run.seed,
     metrics: config.metrics,

@@ -88,6 +88,27 @@ export function printResult(out: Output, result: Result, runDir: string): void {
     for (const w of warnings.slice(0, 12)) out.warn(w);
     if (warnings.length > 12) out.text(out.dim(`  … ${warnings.length - 12} more warnings`));
   }
+  for (const m of result.metrics) {
+    const s = m.stratification;
+    if (s === undefined) continue;
+    out.text();
+    out.text(
+      `  ${m.metricId} by ${s.by.join(' x ')} (the pooled lift averages across these strata):`,
+    );
+    for (const stratum of s.strata) {
+      const label = s.by.map((factor) => stratum.levels[factor] ?? '?').join(' x ');
+      const effects = stratum.comparisons.map(
+        (c) => `${c.variant} ${pct(c.lift)} [${pct(c.liftCi95[0])}, ${pct(c.liftCi95[1])}]`,
+      );
+      const sizes = stratum.variants.map((v) => `${v.variant} n=${v.sessions}`).join(', ');
+      out.text(`    ${label}: ${effects.length ? effects.join('; ') : 'not estimable'} (${sizes})`);
+    }
+    for (const h of s.heterogeneity) {
+      out.text(
+        `    heterogeneity ${h.variant} vs ${h.control}: Q=${h.q.toFixed(2)} df=${h.df} p=${h.pValue.toFixed(3)} I²=${(h.iSquared * 100).toFixed(0)}% over ${h.strata} strata`,
+      );
+    }
+  }
   out.text();
   const accuracy = result.calibration.directionAccuracy;
   out.text(

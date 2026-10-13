@@ -49,6 +49,17 @@ variances and on every treatment-minus-control variance. Effective sample size p
 ANOVA, clipped to ``[1, n]``. Fewer than three clusters in any variant falls back to iid
 uncertainty with a warning.
 
+Stratification (``stratifyBy`` non-empty)
+-----------------------------------------
+Every level combination of the named factors is a stratum. Within each, the variant means and
+session counts are reported and, for each treatment with at least two sessions in both arms, the
+difference against control with a normal 95% interval (binary variances floored at the
+Laplace-smoothed value) and the relative lift with a delta-method interval. Across the strata of
+one treatment, an inverse-variance (fixed-effect) pooled difference and Cochran's Q with its
+degrees of freedom, p-value and ``I^2 = max(0, (Q - df) / Q)`` say whether the strata agree, and
+the pooled difference is only ever reported next to them. Stratification is reporting only: the
+decision still uses the pooled comparison, whose uncertainty comes from clustering above.
+
 Variance decomposition
 ----------------------
 After removing variant means, the one-way between-group sum of squares of persona, model (and
@@ -80,6 +91,9 @@ from agon_stats.metrics import (
 
 Z975: float = float(sps.norm.ppf(0.975))
 MIN_CLUSTERS = 3
+MIN_STRATUM_SESSIONS = 2
+HETEROGENEITY_I2_WARN = 0.5
+HETEROGENEITY_P_WARN = 0.05
 MIN_BOOTSTRAP_REPLICATES = 30
 WEAK_PRIOR_VARIANCE_FACTOR = 100.0
 
@@ -143,6 +157,107 @@ class Comparison:
 
 
 @dataclass(slots=True)
+class StratumVariant:
+    variant: str
+    sessions: int
+    mean: float
+
+    def to_json(self) -> dict[str, Any]:
+        return {"variant": self.variant, "sessions": int(self.sessions), "mean": _num(self.mean)}
+
+
+@dataclass(slots=True)
+class StratumComparison:
+    variant: str
+    control: str
+    difference: float
+    """Variant mean minus control mean within the stratum."""
+    difference_ci95: tuple[float, float]
+    lift: float
+    lift_ci95: tuple[float, float]
+    variance: float
+    """Variance of the difference (not serialized); the weight Cochran's Q uses."""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "variant": self.variant,
+            "control": self.control,
+            "difference": _num(self.difference),
+            "differenceCi95": [_num(self.difference_ci95[0]), _num(self.difference_ci95[1])],
+            "lift": _num(self.lift),
+            "liftCi95": [_num(self.lift_ci95[0]), _num(self.lift_ci95[1])],
+        }
+
+
+@dataclass(slots=True)
+class Stratum:
+    levels: dict[str, str]
+    """The factor levels that define the stratum, e.g. ``{"persona": "smb-owner"}``."""
+    sessions: int
+    variants: list[StratumVariant]
+    comparisons: list[StratumComparison]
+    """One per treatment with at least ``MIN_STRATUM_SESSIONS`` sessions in both arms."""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "levels": dict(self.levels),
+            "sessions": int(self.sessions),
+            "variants": [v.to_json() for v in self.variants],
+            "comparisons": [c.to_json() for c in self.comparisons],
+        }
+
+
+@dataclass(slots=True)
+class Heterogeneity:
+    variant: str
+    control: str
+    strata: int
+    """Strata with an estimable difference."""
+    pooled_difference: float
+    """Inverse-variance weighted difference across those strata (fixed effect)."""
+    pooled_difference_ci95: tuple[float, float]
+    q: float
+    """Cochran's Q."""
+    df: int
+    p_value: float
+    i_squared: float
+    """``max(0, (Q - df) / Q)``: the share of variation across strata beyond sampling noise."""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "variant": self.variant,
+            "control": self.control,
+            "strata": int(self.strata),
+            "pooledDifference": _num(self.pooled_difference),
+            "pooledDifferenceCi95": [
+                _num(self.pooled_difference_ci95[0]),
+                _num(self.pooled_difference_ci95[1]),
+            ],
+            "q": _num(self.q, lo=0.0),
+            "df": int(self.df),
+            "pValue": _num(self.p_value, lo=0.0, hi=1.0),
+            "iSquared": _num(self.i_squared, lo=0.0, hi=1.0),
+        }
+
+
+@dataclass(slots=True)
+class Stratification:
+    """The per-stratum report ``stratifyBy`` asks for; a pooled number never travels without Q."""
+
+    by: tuple[str, ...]
+    strata: list[Stratum]
+    heterogeneity: list[Heterogeneity]
+    """One per treatment with at least two estimable strata."""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "by": list(self.by),
+            "strata": [s.to_json() for s in self.strata],
+            "heterogeneity": [h.to_json() for h in self.heterogeneity],
+        }
+
+
+@dataclass(slots=True)
 class MetricAnalysis:
     metric: MetricSpec
     binary: bool
@@ -151,6 +266,7 @@ class MetricAnalysis:
     p_best: dict[str, float]
     """P(best) for every variant, control included."""
     variance_decomposition: dict[str, float] | None = None
+    stratification: Stratification | None = None
     warnings: list[str] = field(default_factory=list)
 
     def variant_stats(self, variant: str) -> VariantStats:
@@ -170,6 +286,8 @@ class MetricAnalysis:
             out["varianceDecomposition"] = {
                 k: _num(v, lo=0.0, hi=1.0) for k, v in self.variance_decomposition.items()
             }
+        if self.stratification is not None:
+            out["stratification"] = self.stratification.to_json()
         out["warnings"] = list(self.warnings)
         return out
 
@@ -314,6 +432,25 @@ def kish_ess(n: int, n_clusters: int, icc: float) -> float:
     return float(min(float(n), max(1.0, n / deff)))
 
 
+def cochran_q(
+    differences: np.ndarray, variances: np.ndarray
+) -> tuple[float, float, float, int, float, float]:
+    """Fixed-effect pooling of per-stratum differences and Cochran's Q.
+
+    Returns ``(pooled, pooled_se, q, df, p, i_squared)`` with inverse-variance weights,
+    ``p`` from the chi-square distribution on ``df = K - 1`` and ``I^2 = max(0, (Q - df) / Q)``.
+    """
+    weights = 1.0 / variances
+    total = float(np.sum(weights))
+    pooled = float(np.sum(weights * differences) / total)
+    pooled_se = math.sqrt(1.0 / total)
+    q = float(np.sum(weights * (differences - pooled) ** 2))
+    df = int(differences.size) - 1
+    p = float(sps.chi2.sf(q, df)) if df > 0 else 1.0
+    i_squared = max(0.0, (q - df) / q) if q > 0.0 else 0.0
+    return pooled, pooled_se, q, df, p, i_squared
+
+
 def variance_decomposition(
     values: np.ndarray,
     variant_idx: np.ndarray,
@@ -427,18 +564,134 @@ def metric_rng(seed: int, metric_id: str) -> np.random.Generator:
     return np.random.default_rng([seed, zlib.crc32(metric_id.encode("utf-8"))])
 
 
+def factor_level(row: SessionRow, factor: str) -> str:
+    if factor == "persona":
+        return row.persona_id
+    if factor == "model":
+        return row.model
+    if factor == "scenario":
+        return row.scenario_id
+    raise ConfigError(f"unknown grouping factor {factor!r}")
+
+
 def cluster_key(row: SessionRow, cluster_by: Sequence[str]) -> str:
-    parts: list[str] = []
-    for factor in cluster_by:
-        if factor == "persona":
-            parts.append(row.persona_id)
-        elif factor == "model":
-            parts.append(row.model)
-        elif factor == "scenario":
-            parts.append(row.scenario_id)
-        else:
-            raise ConfigError(f"unknown clusterBy factor {factor!r}")
-    return "\x1f".join(parts)
+    return "\x1f".join(factor_level(row, factor) for factor in cluster_by)
+
+
+def stratify(
+    rows: Sequence[SessionRow],
+    y: np.ndarray,
+    vidx: np.ndarray,
+    variants: Sequence[str],
+    control: str,
+    control_idx: int,
+    binary: bool,
+    config: AnalysisConfig,
+) -> tuple[Stratification | None, list[str]]:
+    """Per-stratum effects over the level combinations of ``config.stratify_by`` (see the module
+    docstring), with Cochran's Q per treatment. Returns the report and the warnings it raises."""
+    if not config.stratify_by or not rows:
+        return None, []
+    warnings: list[str] = []
+    n_variants = len(variants)
+    keys = [tuple(factor_level(row, factor) for factor in config.stratify_by) for row in rows]
+    levels = sorted(set(keys))
+    code_of = {key: i for i, key in enumerate(levels)}
+    codes = np.array([code_of[key] for key in keys], dtype=np.int64)
+    strata: list[Stratum] = []
+    per_treatment: dict[int, list[tuple[float, float]]] = {
+        t: [] for t in range(n_variants) if t != control_idx
+    }
+    for code, key in enumerate(levels):
+        mask = codes == code
+        ys, vs = y[mask], vidx[mask]
+        counts = np.bincount(vs, minlength=n_variants)
+        sums = (
+            np.bincount(vs, weights=ys, minlength=n_variants) if ys.size else np.zeros(n_variants)
+        )
+        means = np.divide(sums, counts, out=np.zeros(n_variants), where=counts > 0)
+        var_mean = np.full(n_variants, np.nan)  # variance of each arm's mean, NaN when too small
+        for i in range(n_variants):
+            n = int(counts[i])
+            if n < MIN_STRATUM_SESSIONS:
+                continue
+            if binary:
+                p = float(means[i])
+                laplace = (float(sums[i]) + 1.0) / (n + 2.0)
+                var_mean[i] = max(p * (1.0 - p), laplace * (1.0 - laplace)) / n
+            else:
+                var_mean[i] = float(np.var(ys[vs == i], ddof=1)) / n
+        mean_c, var_c = float(means[control_idx]), float(var_mean[control_idx])
+        comparisons: list[StratumComparison] = []
+        for t, variant in enumerate(variants):
+            if t == control_idx or not (math.isfinite(var_mean[t]) and math.isfinite(var_c)):
+                continue
+            mean_t, var_t = float(means[t]), float(var_mean[t])
+            difference = mean_t - mean_c
+            variance = var_t + var_c
+            half = Z975 * math.sqrt(variance)
+            lift = difference / mean_c if mean_c != 0.0 else 0.0
+            lift_ci = delta_method_lift_ci(mean_t, math.sqrt(var_t), mean_c, math.sqrt(var_c))
+            comparisons.append(
+                StratumComparison(
+                    variant=variant,
+                    control=control,
+                    difference=difference,
+                    difference_ci95=(difference - half, difference + half),
+                    lift=lift,
+                    lift_ci95=lift_ci if lift_ci is not None else (lift, lift),
+                    variance=variance,
+                )
+            )
+            if variance > 0.0:
+                per_treatment[t].append((difference, variance))
+        strata.append(
+            Stratum(
+                levels=dict(zip(config.stratify_by, key, strict=True)),
+                sessions=int(mask.sum()),
+                variants=[
+                    StratumVariant(variant=v, sessions=int(counts[i]), mean=float(means[i]))
+                    for i, v in enumerate(variants)
+                ],
+                comparisons=comparisons,
+            )
+        )
+    heterogeneity: list[Heterogeneity] = []
+    by = list(config.stratify_by)
+    for t, pairs in per_treatment.items():
+        if len(pairs) < 2:
+            warnings.append(
+                f"stratifyBy={by}: {variants[t]} vs {control} has {len(pairs)} stratum/strata "
+                f"with at least {MIN_STRATUM_SESSIONS} sessions in both arms; no heterogeneity "
+                "statistic"
+            )
+            continue
+        differences = np.array([d for d, _ in pairs])
+        variances = np.array([v for _, v in pairs])
+        pooled, pooled_se, q, df, p, i_squared = cochran_q(differences, variances)
+        half = Z975 * pooled_se
+        heterogeneity.append(
+            Heterogeneity(
+                variant=variants[t],
+                control=control,
+                strata=len(pairs),
+                pooled_difference=pooled,
+                pooled_difference_ci95=(pooled - half, pooled + half),
+                q=q,
+                df=df,
+                p_value=p,
+                i_squared=i_squared,
+            )
+        )
+        if i_squared >= HETEROGENEITY_I2_WARN or p < HETEROGENEITY_P_WARN:
+            warnings.append(
+                f"stratifyBy={by}: the effect of {variants[t]} differs across strata "
+                f"(Q={q:.2f}, df={df}, p={p:.3f}, I^2={i_squared:.0%}); the pooled lift averages "
+                "across regimes"
+            )
+    return Stratification(
+        by=tuple(config.stratify_by), strata=strata, heterogeneity=heterogeneity
+    ), warnings
 
 
 def analyze_sessions(rows: Sequence[SessionRow], config: AnalysisConfig) -> AnalysisOutput:
@@ -699,6 +952,12 @@ def analyze_metric(
             )
         )
 
+    # ---- strata ---------------------------------------------------------------------------
+    stratification, strata_warnings = stratify(
+        kept_rows, y, vidx, variants, control, control_idx, binary, config
+    )
+    warnings.extend(strata_warnings)
+
     # ---- variance decomposition -----------------------------------------------------------
     decomposition: dict[str, float] | None = None
     if y.size >= 2:
@@ -718,6 +977,7 @@ def analyze_metric(
         comparisons=comparisons,
         p_best=p_best,
         variance_decomposition=decomposition,
+        stratification=stratification,
         warnings=warnings,
     )
 

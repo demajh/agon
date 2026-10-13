@@ -36,12 +36,67 @@ export const VarianceDecompositionSchema = z.object({
   residual: UnitSchema,
 });
 
+export const StratumVariantSchema = z.object({
+  variant: SlugSchema,
+  sessions: z.number().int().nonnegative(),
+  mean: z.number(),
+});
+export type StratumVariant = z.infer<typeof StratumVariantSchema>;
+
+export const StratumComparisonSchema = z.object({
+  variant: SlugSchema,
+  control: SlugSchema,
+  difference: z.number().describe('Variant mean minus control mean within the stratum'),
+  differenceCi95: z.tuple([z.number(), z.number()]),
+  lift: z.number().describe('Relative lift of variant over control within the stratum'),
+  liftCi95: z.tuple([z.number(), z.number()]),
+});
+export type StratumComparison = z.infer<typeof StratumComparisonSchema>;
+
+export const StratumSchema = z.object({
+  levels: z
+    .record(z.string(), z.string())
+    .describe('The factor levels that define the stratum, e.g. { persona: "smb-owner" }'),
+  sessions: z.number().int().nonnegative(),
+  variants: z.array(StratumVariantSchema),
+  comparisons: z
+    .array(StratumComparisonSchema)
+    .describe('One per treatment with at least two sessions in both arms of the stratum'),
+});
+export type Stratum = z.infer<typeof StratumSchema>;
+
+export const HeterogeneitySchema = z.object({
+  variant: SlugSchema,
+  control: SlugSchema,
+  strata: z.number().int().nonnegative().describe('Strata with an estimable difference'),
+  pooledDifference: z
+    .number()
+    .describe('Inverse-variance weighted difference across those strata (fixed effect)'),
+  pooledDifferenceCi95: z.tuple([z.number(), z.number()]),
+  q: z.number().nonnegative().describe("Cochran's Q"),
+  df: z.number().int().nonnegative(),
+  pValue: UnitSchema,
+  iSquared: UnitSchema.describe('Share of the variation across strata beyond sampling noise'),
+});
+export type Heterogeneity = z.infer<typeof HeterogeneitySchema>;
+
+/** The per-stratum report `analysis.stratifyBy` asks for. A pooled number never travels without its heterogeneity statistic. */
+export const StratificationSchema = z.object({
+  by: z.array(z.enum(['persona', 'model', 'scenario'])),
+  strata: z.array(StratumSchema),
+  heterogeneity: z
+    .array(HeterogeneitySchema)
+    .describe('One per treatment with at least two estimable strata'),
+});
+export type Stratification = z.infer<typeof StratificationSchema>;
+
 export const MetricResultSchema = z.object({
   metricId: SlugSchema,
   direction: z.enum(['increase', 'decrease']),
   variants: z.array(VariantStatsSchema),
   comparisons: z.array(ComparisonSchema),
   varianceDecomposition: VarianceDecompositionSchema.optional(),
+  stratification: StratificationSchema.optional(),
   warnings: z.array(z.string()).default([]),
 });
 export type MetricResult = z.infer<typeof MetricResultSchema>;

@@ -117,6 +117,16 @@ falls back to iid with a warning. `varianceDecomposition` reports the share of p
 variance between personas, between models (and between scenarios when several exist) versus
 residual, normalized to sum to 1.
 
+## Strata
+
+`stratifyBy` (a subset of `persona`, `model`, `scenario`; off by default) adds `stratification`
+to each metric: one entry per level combination with every variant's sessions and mean and, for
+each treatment with at least two sessions in both arms, the difference against control with a
+normal 95% interval and the relative lift with a delta-method interval. Per treatment, Cochran's
+Q over the estimable strata (with `df`, `pValue` and `iSquared`) accompanies an inverse-variance
+pooled difference, and the metric warns when I² ≥ 50% or Q's p < 0.05 that the pooled lift
+averages across regimes. Reporting only: the decision uses the pooled comparison.
+
 ## Calibration
 
 Every result carries a `CalibrationNote` from the bundled `profiles.json` registry. The shipped

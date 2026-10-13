@@ -66,10 +66,12 @@ owner who closes it:
   settlement: {
     predicate: string,           // the observable condition under which it counts as settled
     observer: string,            // who applies the predicate
+    observedAt?: string,         // when the observer saw it hold or fail; declared at close
+    observedUnder?: string,      // the version pin the observer evaluated under; declared at close
   },
   requirementsDigest?: string,   // the requirements version the receipt was accepted under
   createdAt: string,
-  closedAt?: string,             // set exactly when the finding is closed
+  closedAt?: string,             // stamped by the repository when the finding is closed
 }
 ```
 
@@ -88,14 +90,27 @@ An open finding has no `closedAt`, and a closed one must have it. A finding is c
 never reopened; if the problem returns, file a new finding against the receipt that let it
 through.
 
+### Who stamps what
+
+`closedAt` is stamped by the repository at the moment of the close, from its own clock. The
+closer cannot supply it, so the closure time on the record is witnessed, not declared. What the
+closer may supply is the observer's own stamp: `settlement.observedAt`, when the observer saw the
+predicate hold or fail, and `settlement.observedUnder`, the version pin (a release, a commit, a
+requirements digest) the predicate was evaluated under. Both are declared by the observer and
+recorded as such; an open finding carries neither, and `closeFinding` refuses them on one. The
+three timestamps answer three questions: `createdAt` says when the problem was filed, `observedAt`
+when the condition was seen, `closedAt` when the record was closed, and a gap between the last
+two is itself information about how the finding was handled.
+
 ### Storage
 
 Findings are stored next to results, in the `findings` table (migration
 `0004_receipts_and_findings`, which also adds `kind`, `assumptions` and `requirements_digest` to
 `results`). The repository functions in `@agon/db` are `findings.insert`, `get`, `find`, `list`
-(newest first, filtered by `receiptId` and `status`, paginated) and `close`. `close` updates only
-a row whose status is still `open`, so two concurrent closes cannot both win; the loser gets a
-`ConflictError`. `receipt_id` is not a foreign key: a finding keeps naming its receipt whatever
+(newest first, filtered by `receiptId` and `status`, paginated) and `close`. `close` takes the
+closing status and the observer's observation, stamps `closedAt` itself and merges the observation
+into the settlement; it updates only a row whose status is still `open`, so two concurrent closes
+cannot both win; the loser gets a `ConflictError`. `receipt_id` is not a foreign key: a finding keeps naming its receipt whatever
 happens to the result row. There is no HTTP route or CLI command for findings yet. They are
 written through the repository, and the routes are the next step once the review settles the
 shape.

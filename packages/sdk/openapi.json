@@ -525,6 +525,11 @@
                 "default": ["persona", "model"],
                 "description": "Grouping factors treated as clusters when estimating uncertainty"
               },
+              "stratifyBy": {
+                "type": "array",
+                "items": { "type": "string", "enum": ["persona", "model", "scenario"] },
+                "description": "Factors whose levels each get their own effect estimate with its interval and session counts; the pooled effect is then reported together with a heterogeneity statistic (Cochran's Q, I²). Reporting only: the decision still uses the pooled result"
+              },
               "calibrationProfile": {
                 "type": "string",
                 "minLength": 1,
@@ -1390,6 +1395,131 @@
                     "residual": { "type": "number", "minimum": 0, "maximum": 1 }
                   },
                   "required": ["persona", "model", "residual"]
+                },
+                "stratification": {
+                  "type": "object",
+                  "properties": {
+                    "by": {
+                      "type": "array",
+                      "items": { "type": "string", "enum": ["persona", "model", "scenario"] }
+                    },
+                    "strata": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "levels": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "The factor levels that define the stratum, e.g. { persona: \"smb-owner\" }"
+                          },
+                          "sessions": { "type": "integer", "minimum": 0 },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "variant": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+                                },
+                                "sessions": { "type": "integer", "minimum": 0 },
+                                "mean": { "type": "number" }
+                              },
+                              "required": ["variant", "sessions", "mean"]
+                            }
+                          },
+                          "comparisons": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "variant": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+                                },
+                                "control": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+                                },
+                                "difference": {
+                                  "type": "number",
+                                  "description": "Variant mean minus control mean within the stratum"
+                                },
+                                "differenceCi95": {
+                                  "type": "array",
+                                  "prefixItems": [{ "type": "number" }, { "type": "number" }]
+                                },
+                                "lift": {
+                                  "type": "number",
+                                  "description": "Relative lift of variant over control within the stratum"
+                                },
+                                "liftCi95": {
+                                  "type": "array",
+                                  "prefixItems": [{ "type": "number" }, { "type": "number" }]
+                                }
+                              },
+                              "required": [
+                                "variant",
+                                "control",
+                                "difference",
+                                "differenceCi95",
+                                "lift",
+                                "liftCi95"
+                              ]
+                            },
+                            "description": "One per treatment with at least two sessions in both arms of the stratum"
+                          }
+                        },
+                        "required": ["levels", "sessions", "variants", "comparisons"]
+                      }
+                    },
+                    "heterogeneity": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                          "control": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$" },
+                          "strata": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Strata with an estimable difference"
+                          },
+                          "pooledDifference": {
+                            "type": "number",
+                            "description": "Inverse-variance weighted difference across those strata (fixed effect)"
+                          },
+                          "pooledDifferenceCi95": {
+                            "type": "array",
+                            "prefixItems": [{ "type": "number" }, { "type": "number" }]
+                          },
+                          "q": { "type": "number", "minimum": 0, "description": "Cochran's Q" },
+                          "df": { "type": "integer", "minimum": 0 },
+                          "pValue": { "type": "number", "minimum": 0, "maximum": 1 },
+                          "iSquared": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "description": "Share of the variation across strata beyond sampling noise"
+                          }
+                        },
+                        "required": [
+                          "variant",
+                          "control",
+                          "strata",
+                          "pooledDifference",
+                          "pooledDifferenceCi95",
+                          "q",
+                          "df",
+                          "pValue",
+                          "iSquared"
+                        ]
+                      },
+                      "description": "One per treatment with at least two estimable strata"
+                    }
+                  },
+                  "required": ["by", "strata", "heterogeneity"]
                 },
                 "warnings": { "type": "array", "items": { "type": "string" }, "default": [] }
               },

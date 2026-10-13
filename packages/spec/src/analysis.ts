@@ -52,6 +52,12 @@ export const AnalysisSchema = z.object({
     .array(z.enum(['persona', 'model', 'scenario']))
     .default(['persona', 'model'])
     .describe('Grouping factors treated as clusters when estimating uncertainty'),
+  stratifyBy: z
+    .array(z.enum(['persona', 'model', 'scenario']))
+    .optional()
+    .describe(
+      "Factors whose levels each get their own effect estimate with its interval and session counts; the pooled effect is then reported together with a heterogeneity statistic (Cochran's Q, I²). Reporting only: the decision still uses the pooled result",
+    ),
   calibrationProfile: z.string().min(1).default('uncalibrated-v0'),
   materiality: MaterialitySchema.prefault({}).describe(
     'The materiality boundary: output fields a decision may turn on. Versioned under the requirements digest every result carries; see docs/receipts-and-findings.md',

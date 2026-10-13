@@ -32,7 +32,9 @@ export type FindingStatus = z.infer<typeof FindingStatusSchema>;
 
 /**
  * How a finding is settled: the predicate someone will apply and who applies it. Named on the
- * record so the effect never stamps its own finality.
+ * record so the effect never stamps its own finality. At close the observer's own stamp may
+ * travel with it: when they saw the condition hold or fail, and the version pin they evaluated it
+ * under. Both are declared by the observer; `closedAt` is stamped by the repository.
  */
 export const SettlementSchema = z.object({
   predicate: z
@@ -40,8 +42,25 @@ export const SettlementSchema = z.object({
     .min(1)
     .describe('The observable condition under which the finding counts as settled'),
   observer: z.string().min(1).describe('Who applies the predicate'),
+  observedAt: TimestampSchema.optional().describe(
+    'When the observer saw the condition hold or fail; declared by the observer at close',
+  ),
+  observedUnder: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'The version pin (a release, a commit, a requirements digest) the observer evaluated the predicate under; declared at close',
+    ),
 });
 export type Settlement = z.infer<typeof SettlementSchema>;
+
+/** What the observer declares when a finding is closed. The repository stamps `closedAt` itself. */
+export const SettlementObservationSchema = SettlementSchema.pick({
+  observedAt: true,
+  observedUnder: true,
+});
+export type SettlementObservation = z.infer<typeof SettlementObservationSchema>;
 
 /** A finding names a receipt, carries the new invariant and a closure owner. */
 export const FindingSchema = z
@@ -78,6 +97,16 @@ export const FindingSchema = z
         message: 'a closed finding needs closedAt',
       });
     }
+    if (
+      f.status === 'open' &&
+      (f.settlement.observedAt !== undefined || f.settlement.observedUnder !== undefined)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['settlement'],
+        message: 'an open finding has no settlement observation; the observer declares it at close',
+      });
+    }
   });
 export type Finding = z.infer<typeof FindingSchema>;
 export type FindingInput = z.input<typeof FindingSchema>;
@@ -87,11 +116,22 @@ export type ClosedFindingStatus = z.infer<typeof ClosedFindingStatusSchema>;
 
 /**
  * Closes a finding as fixed (the invariant now holds) or tolerated (it does not, and someone owns
- * that). A closed finding is never reopened by this path; create a new one.
+ * that). `at` is the closing time the repository stamps; `observation` is what the observer
+ * declares, when they saw the predicate hold or fail and under which version pin. A closed
+ * finding is never reopened by this path; create a new one.
  */
-export function closeFinding(finding: Finding, status: ClosedFindingStatus, at: string): Finding {
+export function closeFinding(
+  finding: Finding,
+  status: ClosedFindingStatus,
+  at: string,
+  observation: SettlementObservation = {},
+): Finding {
   if (finding.status !== 'open') {
     throw new ConflictError(`finding ${finding.id} is already ${finding.status}`);
   }
-  return FindingSchema.parse({ ...finding, status, closedAt: at });
+  const observed = SettlementObservationSchema.parse(observation);
+  const settlement: Settlement = { ...finding.settlement };
+  if (observed.observedAt !== undefined) settlement.observedAt = observed.observedAt;
+  if (observed.observedUnder !== undefined) settlement.observedUnder = observed.observedUnder;
+  return FindingSchema.parse({ ...finding, status, closedAt: at, settlement });
 }

@@ -24,6 +24,15 @@ def model_assumptions(config: AnalysisConfig, sessions: int) -> list[str]:
         if config.cluster_by
         else "every session is treated as an independent user"
     )
+    strata = (
+        [
+            "Strata: effects are also reported per "
+            + " x ".join(config.stratify_by)
+            + " with a heterogeneity statistic; the decision uses the pooled comparison."
+        ]
+        if config.stratify_by
+        else []
+    )
     return [
         "Sessions were simulated by LLM-driven personas against a fixed scenario set; the result "
         "forecasts user behaviour and is not an observation of it.",
@@ -32,6 +41,7 @@ def model_assumptions(config: AnalysisConfig, sessions: int) -> list[str]:
         f"Uncertainty: {units} ({sessions} sessions analyzed).",
         f"Trials: M={max(1, config.trials)} variant(s) counted against the sample; the count is as "
         "complete as the evaluation ledger that supplied it.",
+        *strata,
     ]
 
 

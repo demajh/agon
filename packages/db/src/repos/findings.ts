@@ -1,5 +1,18 @@
-import { ConflictError, FindingSchema, NotFoundError, newId, nowIso } from '@agon/spec';
-import type { ClosedFindingStatus, Finding, FindingStatus, Settlement } from '@agon/spec';
+import {
+  ConflictError,
+  FindingSchema,
+  NotFoundError,
+  closeFinding,
+  newId,
+  nowIso,
+} from '@agon/spec';
+import type {
+  ClosedFindingStatus,
+  Finding,
+  FindingStatus,
+  Settlement,
+  SettlementObservation,
+} from '@agon/spec';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 import type { Db } from '../client.js';
 import { guard } from '../errors.js';
@@ -128,19 +141,25 @@ export async function list(db: Db, options: ListFindingsOptions = {}): Promise<P
 }
 
 /**
- * Closes an open finding as fixed or tolerated. Only an open finding can be closed, and only once:
- * the update is conditional on `status = 'open'`, so two concurrent closes cannot both win.
+ * Closes an open finding as fixed or tolerated. `closedAt` is stamped here, from the repository's
+ * clock, never supplied by the closer; what the closer may supply is the observer's own stamp,
+ * when the predicate was seen to hold or fail and under which version pin. Only an open finding
+ * can be closed, and only once: the update is conditional on `status = 'open'`, so two concurrent
+ * closes cannot both win.
  */
 export async function close(
   db: Db,
   id: string,
   status: ClosedFindingStatus,
-  closedAt: string = nowIso(),
+  observation: SettlementObservation = {},
+  clock: () => string = nowIso,
 ): Promise<Finding> {
+  const closedAt = clock();
+  const closed = closeFinding(await get(db, id), status, closedAt, observation);
   const rows = await guard(() =>
     db
       .update(findings)
-      .set({ status, closedAt: toDate(closedAt) })
+      .set({ status, closedAt: toDate(closedAt), settlement: closed.settlement })
       .where(and(eq(findings.id, id), eq(findings.status, 'open')))
       .returning(),
   );

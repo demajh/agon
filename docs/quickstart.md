@@ -47,6 +47,8 @@ pnpm agon trace   ./agon-out 3           # replay session #3 step by step
 
 `compare` always prints the calibration note next to the numbers. Until a calibration profile has been fitted on real outcomes, every result is a forecast with unknown direction accuracy, not a measurement.
 
+A pooled lift averages across every persona, model and scenario in the run. Set `analysis.stratifyBy: [persona]` (or `model`, `scenario`) to see the effect per stratum with its interval and session counts, and a heterogeneity statistic (Cochran's Q, I²) beside the pooled number; see [Strata and heterogeneity](agon-yaml.md#strata-and-heterogeneity).
+
 ## Replaying without a model
 
 `--llm-mode record` stores every model response under `.agon/llm-cache`; `--llm-mode replay` serves them back with zero cost, which is how CI and demos run deterministically.

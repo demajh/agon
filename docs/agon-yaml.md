@@ -16,6 +16,10 @@ Recommended value: about 60 for edit-heavy tasks. Measured on 820 real coding-ag
 
 The run as a whole has a wall-clock cap, `defaults.timeCapMs` (default 720000, twelve minutes), counted from the moment the run starts: queue time, cold start, adapter setup and session hooks are inside it. When it is reached no new session starts, sessions in flight stop between steps and are recorded without an outcome, and the run ends as a typed partial result (`termination.kind = time_cap_reached`, exit code 3) rather than a failure. See [run-termination.md](run-termination.md).
 
+## Strata and heterogeneity
+
+A pooled result averages across every regime in the run: personas, models and scenarios all contribute to one lift, and a treatment that helps one persona and hurts another can average to nothing. `analysis.stratifyBy` lists the factors whose levels get their own estimate. For each stratum the result reports every variant's sessions and mean and, for each treatment with at least two sessions in both arms, the difference against control with its 95% interval and the relative lift. The strata come with a heterogeneity statistic per treatment, Cochran's Q with its degrees of freedom, p-value and I², and an inverse-variance pooled difference that never travels without it; when I² is at or above 50% or Q's p-value is below 0.05, the metric warns that the pooled lift averages across regimes. Stratification is reporting only: the verdict still comes from the pooled primary metric, so stratify when the question is where an effect lives, and keep `clusterBy` for how certain the pooled number is. `agon compare` prints the strata under the table and `result.json` carries them as `metrics[].stratification`.
+
 ## Policy gates
 
 `policies[]` holds two families, told apart by `kind`. The default, `kind: squad` (it can be left out), is a squad governance policy: when its `when` matches a run or a result it reallocates, pauses, resumes, kills or notifies, always through a `Decision` row. The other three kinds are gates, checks on what a variant changes, each enforced at its own point. Where a gate only reports, this section says so. Every policy, gates included, is part of the requirements digest each result carries, together with the analysis section and its materiality boundary ([receipts-and-findings.md](receipts-and-findings.md)).
@@ -248,6 +252,7 @@ Each disallowed difference gets a `diffHash` (the field and both values) and is 
 | `decision` | object |  | `{}` |  |
 | `alpha` | number |  | `0.05` |  |
 | `clusterBy` | array of `persona` \| `model` \| `scenario` |  | `["persona","model"]` | Grouping factors treated as clusters when estimating uncertainty |
+| `stratifyBy` | array of `persona` \| `model` \| `scenario` |  |  | Factors whose levels each get their own effect estimate with its interval and session counts; the pooled effect is then reported together with a heterogeneity statistic (Cochran's Q, I²). Reporting only: the decision still uses the pooled result |
 | `calibrationProfile` | string |  | `"uncalibrated-v0"` |  |
 | `materiality` | object |  | `{}` | The materiality boundary: output fields a decision may turn on. Versioned under the requirements digest every result carries; see docs/receipts-and-findings.md |
 

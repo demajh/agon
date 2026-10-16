@@ -60,6 +60,11 @@ the reader's fields, whatever it is called. The registry holds the field lists s
 comparison is always on fields. `checkRow(row, readerSet, registry)` in `@agon/spec` is the pure
 core of the rule, and it names the missing fields when it refuses.
 
+Because the registry is a value the reader passes in, a reader can publish a set of its own that
+asks for more than Agon's writers stamp. [authority-predicate.md](authority-predicate.md) does
+this to require that every row say which authority it was read under, so that a row complete for
+`agon.result.1` is refused rather than served as authority-valid.
+
 ## The reader gate
 
 `RowGate` in `@agon/exporters` holds the rule for one reader (`readerSet`) with a quarantine,

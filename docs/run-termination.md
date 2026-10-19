@@ -93,3 +93,10 @@ esac
 The JSON output carries `termination`, `exitCode`, `counts` (with `interrupted`) and the usual
 per-variant summary. The same object is stamped into `run.json`, where
 `lastCompletedStage` becomes `export` once the local sinks closed without errors.
+
+## Which sessions the cap cut
+
+`counts` and `termination` say how many sessions completed, were interrupted or never started, not
+which ones. The per-planned-session view (variant and case, start offset, elapsed time marked as a
+runtime or as time observed so far, and status) is derived from `run.json` and `sessions.jsonl` by
+`scripts/session-timeline.mjs`; [session-timeline.md](session-timeline.md) describes it.

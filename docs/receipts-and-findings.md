@@ -129,6 +129,13 @@ When an incident shows that a requirement was too weak:
    records what was decided and under which rules, and that record is what the finding points at.
 4. **Close the finding** as fixed or tolerated once its settlement predicate has been applied.
 
+What a receipt does not say is what the result was computed *from*. A source left out on purpose
+and a source that was requested and never arrived both show up as "missing" after an incident, and
+they are settled differently: the first by a dated scope revision, the second by capture, never by
+revising the scope. [examples/coverage-record](../examples/coverage-record/README.md) holds a
+synthetic record that keeps the sources as three sets (nominated, selected, received) and a reader
+test that grades the two cases apart even when the pipeline's success message is intact.
+
 What this does not cover yet: on the server a run keeps one result row. The run worker writes it
 once, when the run's analysis completes. The repository's `upsert` would replace it if the same
 run were analysed again, which Agon does not do today. In local mode `agon compare` rewrites

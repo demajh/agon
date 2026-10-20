@@ -1,0 +1,87 @@
+{
+  "record": "coverage-record.json",
+  "vocabulary": {
+    "covered": "Nominated, selected and received usable. The result covers it.",
+    "excluded_explained": "Nominated and excluded at selection with a recorded reason. A scope decision; disagreeing with it is a scope revision, not a defect in the result.",
+    "selection_dispute": "Nominated and excluded at selection with no reason recorded. The result is complete under its stated scope, but the scope was narrowed without saying why. Settled by a dated scope revision that records the reason or widens the selection; the receipt is not touched.",
+    "capture_failure": "Selected and never received usable. The result was accepted as if it covered the source, and it did not. The observer's success message does not count; the result is not accepted until the source is captured or the acceptance is re-done without it, openly."
+  },
+  "sources": {
+    "sessions:control": {
+      "verdict": "covered",
+      "asOf": "2026-10-12",
+      "because": "In all three sets, status usable."
+    },
+    "sessions:treatment": {
+      "verdict": "covered",
+      "asOf": "2026-10-12",
+      "because": "In all three sets, status usable."
+    },
+    "population:seed-7-size-40": {
+      "verdict": "covered",
+      "asOf": "2026-10-12",
+      "because": "In all three sets, status usable."
+    },
+    "judge:frustration": {
+      "verdict": "covered",
+      "asOf": "2026-10-12",
+      "because": "In all three sets, status usable."
+    },
+    "persona:builtin/power-user": {
+      "verdict": "excluded_explained",
+      "asOf": "2026-10-12",
+      "because": "Excluded at selection and the entry says why (outside the question; would change the sample hash). The growth squad may dispute the reason, and that dispute is a scope revision."
+    },
+    "scenario:returning-user-bank-connect": {
+      "verdict": "excluded_explained",
+      "asOf": "2026-10-12",
+      "because": "Excluded at selection with a reason (the setup hook is not wired). Nothing was requested, so nothing failed to arrive."
+    },
+    "persona:file/accessibility-screen-reader": {
+      "verdict": "selection_dispute",
+      "asOf": "2026-10-12",
+      "because": "Nominated by the accessibility reviewer, excluded by the release owner, why: null. It was never requested, so it cannot be a capture failure. The revision of 2026-10-15 supplies a reason five days after the acceptance; it dates the explanation, it does not change the verdict for the original list."
+    },
+    "live-window:baseline@4-replicas": {
+      "verdict": "covered",
+      "asOf": "2026-10-12",
+      "because": "Selected and received usable before the release."
+    },
+    "live-window:live@4-replicas": {
+      "verdict": "capture_failure",
+      "asOf": "2026-10-12",
+      "because": "Selected (requested from the metrics system with a window, a grain and a capacity label) and never received. The pipeline's green status and the intact compare output say nothing about this source: the gate step was skipped because the file was absent. The revision of 2026-10-14 adds a different source; it does not make this one arrive."
+    },
+    "live-window:live@4-replicas#2026-10-14": {
+      "verdict": "covered",
+      "asOf": "2026-10-14",
+      "because": "Added by the dated revision, selected and received usable on that date. Its verdict holds from 2026-10-14; the acceptance of 2026-10-10 did not have it."
+    }
+  },
+  "overall": {
+    "verdict": "capture_failure",
+    "because": "One selected source never arrived. A capture failure outranks a selection dispute and an explained exclusion, and it is not cancelled by the observer's message, which is intact and true about everything it mentions: the run completed, the compare printed SHIP with its receipt, the pipeline was green. None of those lines is about the live window."
+  },
+  "traps": [
+    {
+      "source": "persona:file/accessibility-screen-reader",
+      "wrong": "capture_failure",
+      "whyWrong": "A source that was never selected cannot fail to arrive. Grading an unexplained exclusion as a capture failure blames the instruments for a decision somebody made."
+    },
+    {
+      "source": "live-window:live@4-replicas",
+      "wrong": "selection_dispute",
+      "whyWrong": "The source was selected, with a concrete request. Nobody disputed its place in the scope; it did not arrive. Grading it as a dispute invites fixing it by revising the scope, which is how a capture failure is made to disappear."
+    },
+    {
+      "source": "live-window:live@4-replicas",
+      "wrong": "covered",
+      "whyWrong": "The later window (#2026-10-14) is a different source added by a dated revision. The original entry stays missing, and the acceptance it was requested for was made without it."
+    },
+    {
+      "source": "overall",
+      "wrong": "covered",
+      "whyWrong": "Reading the observer's success message as evidence of coverage. The message is intact and true; it is about other sources."
+    }
+  ]
+}

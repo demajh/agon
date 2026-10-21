@@ -21,6 +21,7 @@ packages/e2e         real-browser integration tests against the demo app
 packages/cli         the `agon` command
 packages/stats       agon-stats (Python): analysis, bandits, calibration
 examples/demo-app    two-variant demo target used by tests and the quickstart
+examples/aggregation-fixture  data plus a test for merging partial results through different partitionings
 personas/            built-in persona library
 bench/               calibration harness
 ```
@@ -36,7 +37,7 @@ pnpm agon run examples/demo-app/agon.yaml -n 10
 pnpm agon compare ./agon-out
 ```
 
-Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md). How a run ends (the time cap, the typed `termination` object and the exit codes CI maps to check conclusions) is in [docs/run-termination.md](docs/run-termination.md). Why the number of trials a verdict corrects for is counted per evaluation sample, in an append-only ledger, and how a slot opened by mistake is voided and counted beside the completions, is in [docs/trial-ledger.md](docs/trial-ledger.md). What every exported row promises its reader (a schema version, a required set, and the gate that checks them) is in [docs/results-contract.md](docs/results-contract.md); why every result is a receipt and how a finding names one is in [docs/receipts-and-findings.md](docs/receipts-and-findings.md); the transition-matrix gate over the first hours after a release is in [docs/live-window-recorder.md](docs/live-window-recorder.md). The policy gates (`protected_paths`, `side_effects`, `shadow_diff`) are described in the `agon.yaml` reference.
+Step-by-step walkthrough in [docs/quickstart.md](docs/quickstart.md); the `agon.yaml` reference is in [docs/agon-yaml.md](docs/agon-yaml.md). How a run ends (the time cap, the typed `termination` object and the exit codes CI maps to check conclusions) is in [docs/run-termination.md](docs/run-termination.md). Why the number of trials a verdict corrects for is counted per evaluation sample, in an append-only ledger, and how a slot opened by mistake is voided and counted beside the completions, is in [docs/trial-ledger.md](docs/trial-ledger.md). What every exported row promises its reader (a schema version, a required set, and the gate that checks them) is in [docs/results-contract.md](docs/results-contract.md); why every result is a receipt and how a finding names one is in [docs/receipts-and-findings.md](docs/receipts-and-findings.md); the transition-matrix gate over the first hours after a release is in [docs/live-window-recorder.md](docs/live-window-recorder.md); how partial results merge without losing their denominators (sum, valid count and exclusions per variant) is pinned by the [aggregation fixture](examples/aggregation-fixture/README.md). The policy gates (`protected_paths`, `side_effects`, `shadow_diff`) are described in the `agon.yaml` reference.
 
 Agon also simulates populations of **AI agents** against MCP servers and APIs: personas with a `harness` block drive `mcp` targets through tool calls, and `check:` success criteria verify the resulting state. See the MCP section of the [quickstart](docs/quickstart.md#running-against-an-mcp-server).
 

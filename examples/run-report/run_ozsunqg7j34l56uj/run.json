@@ -1,0 +1,153 @@
+{
+  "id": "run_ozsunqg7j34l56uj",
+  "environmentId": "env_ledgerly-fixture",
+  "status": "completed",
+  "variants": ["control", "treatment"],
+  "seed": 1,
+  "config": {
+    "version": 1,
+    "name": "ledgerly-fixture",
+    "target": {
+      "kind": "web",
+      "variants": {
+        "control": {
+          "url": "http://control.test",
+          "env": {},
+          "headers": {}
+        },
+        "treatment": {
+          "url": "http://treatment.test",
+          "env": {},
+          "headers": {}
+        }
+      },
+      "session": {
+        "timeoutMs": 60000
+      },
+      "capture": {
+        "analytics": ["posthog"],
+        "forwardAnalytics": false,
+        "networkErrors": true,
+        "consoleErrors": true,
+        "screenshots": "never"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      }
+    },
+    "personas": [
+      {
+        "id": "eager",
+        "name": "Eager user",
+        "summary": "You want this to work.",
+        "traits": {
+          "role": "owner",
+          "techProficiency": "intermediate",
+          "patience": 0.9,
+          "attention": 0.9,
+          "domainFamiliarity": 0.5,
+          "riskTolerance": 0.5,
+          "priceSensitivity": 0.5
+        },
+        "goals": [],
+        "frustrations": [],
+        "device": "desktop",
+        "locale": "en-US",
+        "tags": []
+      }
+    ],
+    "population": {
+      "seed": 1,
+      "size": 10,
+      "models": [],
+      "personas": [
+        {
+          "use": "eager",
+          "weight": 1
+        }
+      ],
+      "traitJitter": 0
+    },
+    "scenarios": [
+      {
+        "id": "first-project",
+        "goal": "Sign up and create a project.",
+        "success": {
+          "type": "event",
+          "name": "project_created"
+        },
+        "startPath": "/",
+        "maxSteps": 12,
+        "budgetUsd": 0.5,
+        "progress": "observation",
+        "weight": 1,
+        "context": {}
+      }
+    ],
+    "metrics": [
+      {
+        "id": "activation",
+        "primary": true,
+        "type": "conversion",
+        "event": "project_created"
+      },
+      {
+        "id": "steps",
+        "primary": false,
+        "type": "steps"
+      }
+    ],
+    "analysis": {
+      "method": "bayesian",
+      "minSessionsPerVariant": 30,
+      "decision": {
+        "shipIf": 0.95,
+        "killIf": 0.05
+      },
+      "alpha": 0.05,
+      "clusterBy": ["persona", "model"],
+      "calibrationProfile": "uncalibrated-v0",
+      "materiality": {
+        "fields": []
+      }
+    },
+    "export": [],
+    "policies": [],
+    "defaults": {
+      "model": "fake/model-1",
+      "temperature": 0,
+      "maxConcurrency": 4,
+      "timeCapMs": 720000
+    }
+  },
+  "counts": {
+    "planned": 10,
+    "running": 0,
+    "completed": 5,
+    "failed": 0,
+    "interrupted": 5
+  },
+  "costUsd": 0.059999999999999984,
+  "sampleHash": "66afabe2c6ed7869ba7be63f86d46fa33741da1492882037e01ff7543ef20430",
+  "createdAt": "2026-10-18T02:05:51.618Z",
+  "startedAt": "2026-10-18T02:05:51.567Z",
+  "termination": {
+    "kind": "time_cap_reached",
+    "elapsedMs": 2433,
+    "capMs": 2000,
+    "lastCompletedStage": "export",
+    "sessionsExecuted": 5,
+    "sessionsPlanned": 10,
+    "failureCount": 0,
+    "partialDeltaManifest": {
+      "sessionsPerVariant": {
+        "control": 2,
+        "treatment": 3
+      },
+      "metricsComputed": ["activation", "scenario_success", "steps"],
+      "exportsWritten": ["jsonl:./agon-out"]
+    }
+  },
+  "finishedAt": "2026-10-18T02:05:54.000Z"
+}

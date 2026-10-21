@@ -115,3 +115,64 @@ stopped it before any did is red, because the counts the analysis would run on a
 The JSON output carries `termination`, `exitCode`, `counts` (with `interrupted`) and the usual
 per-variant summary. The same object is stamped into `run.json`, where
 `lastCompletedStage` becomes `export` once the local sinks closed without errors.
+
+## Reading the per-variant counts
+
+A time cap cuts the slow sessions, and slow sessions are not a random sample: a variant whose users
+take longer loses more of them. Any rate computed over the planned set, or over every recorded
+session, folds that loss into the product's score. The summary `agon run` prints today does the
+latter: its `sessions` column counts every recorded session, interrupted ones included (they appear
+as `unknown N` under `outcomes`), and `success` divides by that number. On the fixture under
+[examples/run-report](../examples/run-report/README.md), ten planned sessions of which five reached
+an outcome, it prints `control 5 20%` and `treatment 5 60%`; its heading counts `10/10 sessions`
+while the `termination` line counts `5/10 sessions executed`. Those numbers are consistent with the
+schema above but easy to read as a clean rate.
+
+excelsior, in a Moltbook thread on time caps, proposed the reading that cannot be misread: "print
+`4 passed / 5 completed / 10 planned`, label 80% as conditional on completion, and keep per-variant
+interruption counts visible." `scripts/run-report.mjs` prints exactly that from a run directory
+(or the newest `run_*` under an output directory; `--json` for the same as data). It needs only
+Node and reads `run.json` and `sessions.jsonl`:
+
+```sh
+node scripts/run-report.mjs ./agon-out
+node scripts/run-report.mjs examples/run-report
+```
+
+```
+run_ozsunqg7j34l56uj completed: time_cap_reached after 2.4s (cap 2000 ms) · 5/10 sessions reached an outcome
+
+variant    sessions                             pass rate          planned-set rate  interrupted  not started  did not pass
+control    1 passed / 2 completed / 5 planned   50% of completed   20%–80% (open)    3            0            1
+treatment  3 passed / 3 completed / 5 planned   100% of completed  60%–100% (open)   2            0            0
+all        4 passed / 5 completed / 10 planned  80% of completed   40%–90% (open)    5            0            1
+```
+
+The fields, and where each comes from in the records:
+
+| field | meaning | source |
+|---|---|---|
+| `planned` | sessions the plan assigned to the variant | `counts.planned` split by the seeded round-robin order, recovered from the recorded sessions' `index` (see below) |
+| `completed` | sessions that reached an outcome, passed or not; the per-variant share of `termination.sessionsExecuted` | sessions whose `outcome` is set |
+| `passed` | completed sessions whose outcome is `success` | `outcome: "success"` |
+| `pass rate` | `passed ÷ completed`, **conditional on completion**; never `passed ÷ planned` | computed |
+| `planned-set rate` | the interval the unresolved sessions leave open: `passed ÷ planned` if every unresolved session would have failed, `(passed + interrupted + not started) ÷ planned` if every one would have passed; a single number only when nothing is unresolved | computed |
+| `interrupted` | stopped by the time cap at a step boundary, no outcome; the per-variant share of `counts.interrupted` | `status: "failed"`, no `outcome`, `error: "run time cap reached"` |
+| `not started` | planned and never begun when the run ended | `planned` minus recorded sessions |
+| `did not pass` | completed with an outcome other than `success` (`gave_up`, `max_steps`, `budget_exceeded`, `stalled`, `error`) | `completed − passed` |
+
+With ten planned, four passed, one given up and five interrupted, the conditional pass rate is 80%
+and the planned-set rate is anywhere from 40% to 90%; the report prints both and the five beside
+them. Compare `partialDeltaManifest.sessionsPerVariant`, which carries the per-variant `completed`
+count for a capped or cancelled run, with the per-variant `interrupted` and `not started` columns:
+a variant that lost most of its sessions to the cap has a wide interval however good its
+conditional rate looks, and that is the signal to raise `defaults.timeCapMs` or lower
+`population.size` before reading the verdict.
+
+Planned sessions per variant are not stored. The planner assigns session `i` to
+`variantOrder[i % k]` for `k` variants in a seeded order (`planSessions` in `packages/engine`), so
+the recorded sessions' `index` and `variant` fields reveal the order; when one residue class has no
+recorded session and exactly one variant is left, it is filled in. If fewer sessions ran than are
+needed to recover the order (a run cut before `k` sessions finished, or a dry run), the per-variant
+`planned` prints as `?`, the per-variant interval as `unknown`, and the `all` row still carries the
+run-wide interval from `counts.planned`.

@@ -120,6 +120,17 @@ The gate is in memory with a serialisable snapshot: `snapshot()` / `RowGate.rest
 `.agon/gate/<reader set>.json` next to `.agon/ledger`. The file exists for counting and for
 restarts. It is not a source of rows to serve.
 
+## Combining rows that passed the gate
+
+The gate says whether a row may be used; it says nothing about how rows are combined once they
+pass. A `VariantStats` carries `sessions` (the sessions with a value for the metric) and `mean`
+over those, and the excluded count appears in the metric's `warnings`. A consumer that merges such
+results across personas, models or shards has to add sums, valid counts and exclusions and divide
+at the end, never average means. The [aggregation fixture](../examples/aggregation-fixture/README.md)
+is a dataset and a test that pins this: the same rows merged through six partitionings give the
+same result and exclusion counts, and an all-excluded partition contributes zero valid weight
+rather than a zero-valued observation.
+
 ## Open question for reviewers
 
 Should the expiry code live in the same table as the ingest quarantine? Today a row that expires

@@ -176,3 +176,10 @@ recorded session and exactly one variant is left, it is filled in. If fewer sess
 needed to recover the order (a run cut before `k` sessions finished, or a dry run), the per-variant
 `planned` prints as `?`, the per-variant interval as `unknown`, and the `all` row still carries the
 run-wide interval from `counts.planned`.
+
+## Which sessions the cap cut
+
+`counts` and `termination` say how many sessions completed, were interrupted or never started, not
+which ones. The per-planned-session view (variant and case, start offset, elapsed time marked as a
+runtime or as time observed so far, and status) is derived from `run.json` and `sessions.jsonl` by
+`scripts/session-timeline.mjs`; [session-timeline.md](session-timeline.md) describes it.

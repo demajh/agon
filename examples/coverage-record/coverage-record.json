@@ -1,0 +1,222 @@
+{
+  "kind": "coverage-record",
+  "synthetic": true,
+  "note": "A synthetic record for a reader test. Nothing here was produced by a real run; the ids, dates and people are invented. The shape is described in examples/coverage-record/README.md.",
+  "subject": {
+    "experiment": "ledgerly-onboarding",
+    "runId": "run_syn_ledgerly_07",
+    "resultId": "res_syn_ledgerly_07",
+    "verdict": "ship treatment",
+    "requirementsDigest": "3f9a2c1d3f9a7e2b0c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70819aa1",
+    "decidedAt": "2026-10-10T16:40:00Z",
+    "releasedAt": "2026-10-11T09:00:00Z"
+  },
+  "observer": {
+    "name": "release pipeline",
+    "recordedAt": "2026-10-11T11:05:00Z",
+    "message": [
+      "agon run: termination.kind=completed, sessionsExecuted=40, sessionsPlanned=40, failureCount=0, exit 0",
+      "agon compare: verdict: SHIP treatment — P(treatment beats control) = 0.97 on activation",
+      "agon compare: receipt: model under requirements 3f9a2c1d3f9a, 4 assumption(s) recorded",
+      "live-window gate: step skipped (live.json not found), continue-on-error, pipeline green"
+    ],
+    "intact": true
+  },
+  "original": {
+    "asOf": "2026-10-12",
+    "by": "release owner",
+    "nominated": [
+      {
+        "id": "sessions:control",
+        "proposedBy": "agon.yaml (target.variants.control)",
+        "why": "The control arm. Without it there is no comparison."
+      },
+      {
+        "id": "sessions:treatment",
+        "proposedBy": "agon.yaml (target.variants.treatment)",
+        "why": "The arm the ship verdict names."
+      },
+      {
+        "id": "population:seed-7-size-40",
+        "proposedBy": "agon.yaml (population)",
+        "why": "smb-owner 0.5, developer-evaluator 0.3, skeptical-cfo 0.2; the sample the receipt was accepted under."
+      },
+      {
+        "id": "judge:frustration",
+        "proposedBy": "agon.yaml (metrics.frustration)",
+        "why": "The judge score is one of the metrics inside the requirements digest."
+      },
+      {
+        "id": "persona:builtin/power-user",
+        "proposedBy": "growth squad",
+        "why": "Power users were the loudest about the five-step flow in support tickets."
+      },
+      {
+        "id": "scenario:returning-user-bank-connect",
+        "proposedBy": "payments squad",
+        "why": "The bank-connection step moved from step three to an optional card; a returning user should still find it."
+      },
+      {
+        "id": "persona:file/accessibility-screen-reader",
+        "proposedBy": "accessibility reviewer",
+        "why": "The control's verification code sits in a low-contrast dev hint; a screen-reader persona would say whether the treatment removed the problem or moved it."
+      },
+      {
+        "id": "live-window:baseline@4-replicas",
+        "proposedBy": "SRE",
+        "why": "Pre-release window at matched capacity, so the first hours after the release have something to be compared with."
+      },
+      {
+        "id": "live-window:live@4-replicas",
+        "proposedBy": "SRE",
+        "why": "The first two hours after the release at the same capacity label; the measurement the ship model is checked against."
+      }
+    ],
+    "selected": [
+      {
+        "id": "sessions:control",
+        "by": "release owner",
+        "included": true,
+        "why": "Required by the analysis section."
+      },
+      {
+        "id": "sessions:treatment",
+        "by": "release owner",
+        "included": true,
+        "why": "Required by the analysis section."
+      },
+      {
+        "id": "population:seed-7-size-40",
+        "by": "release owner",
+        "included": true,
+        "why": "The sample hash the ledger counts trials against; changing it would reset M."
+      },
+      {
+        "id": "judge:frustration",
+        "by": "release owner",
+        "included": true,
+        "why": "Inside the requirements digest."
+      },
+      {
+        "id": "persona:builtin/power-user",
+        "by": "release owner",
+        "included": false,
+        "why": "Outside the question. The experiment asks about new-user activation; power-user is a returning-user persona, and adding it changes the sample hash and the receipt."
+      },
+      {
+        "id": "scenario:returning-user-bank-connect",
+        "by": "release owner",
+        "included": false,
+        "why": "Needs the session setup hook (scripts/create-test-user.sh) to seed a returning user; the hook is not wired for this run. Nominated for the next experiment."
+      },
+      {
+        "id": "persona:file/accessibility-screen-reader",
+        "by": "release owner",
+        "included": false,
+        "why": null
+      },
+      {
+        "id": "live-window:baseline@4-replicas",
+        "by": "release owner",
+        "included": true,
+        "why": "The gate needs a baseline at the release's capacity."
+      },
+      {
+        "id": "live-window:live@4-replicas",
+        "by": "release owner",
+        "included": true,
+        "why": "Requested from the metrics system: four series at a 10 s grain for 2026-10-11T09:00Z to 11:00Z, capacity label '4 replicas'."
+      }
+    ],
+    "received": [
+      {
+        "id": "sessions:control",
+        "by": "agon run",
+        "status": "usable",
+        "receivedAt": "2026-10-10T16:31:00Z",
+        "detail": "20 sessions with an outcome in sessions.jsonl."
+      },
+      {
+        "id": "sessions:treatment",
+        "by": "agon run",
+        "status": "usable",
+        "receivedAt": "2026-10-10T16:31:00Z",
+        "detail": "20 sessions with an outcome in sessions.jsonl."
+      },
+      {
+        "id": "population:seed-7-size-40",
+        "by": "agon run",
+        "status": "usable",
+        "receivedAt": "2026-10-10T16:02:00Z",
+        "detail": "run.sampleHash recorded; the ledger shows M=1 against it."
+      },
+      {
+        "id": "judge:frustration",
+        "by": "agon run",
+        "status": "usable",
+        "receivedAt": "2026-10-10T16:31:00Z",
+        "detail": "A frustration score on every session with an outcome."
+      },
+      {
+        "id": "live-window:baseline@4-replicas",
+        "by": "SRE",
+        "status": "usable",
+        "receivedAt": "2026-10-11T08:40:00Z",
+        "detail": "baseline.json, 720 samples at 10 s, capacity '4 replicas', validated by LiveWindowSchema."
+      },
+      {
+        "id": "live-window:live@4-replicas",
+        "by": "SRE",
+        "status": "missing",
+        "receivedAt": null,
+        "detail": "The metrics export timed out at 09:12Z and was not retried. live.json did not exist when the pipeline step ran; the step was continue-on-error and the pipeline went green."
+      }
+    ]
+  },
+  "revisions": [
+    {
+      "date": "2026-10-14",
+      "by": "SRE",
+      "note": "Scope revision: a second live window, exported after the first never arrived. It is a new source with its own id; the original entry for live-window:live@4-replicas is not edited.",
+      "nominated": [
+        {
+          "id": "live-window:live@4-replicas#2026-10-14",
+          "proposedBy": "SRE",
+          "why": "Two hours of live traffic at '4 replicas' on 2026-10-14, three days after the release. Not the first hours, so a weaker measurement, but a measurement."
+        }
+      ],
+      "selected": [
+        {
+          "id": "live-window:live@4-replicas#2026-10-14",
+          "by": "release owner",
+          "included": true,
+          "why": "Accepted as a late measurement. It does not change what the ship was accepted under on 2026-10-10."
+        }
+      ],
+      "received": [
+        {
+          "id": "live-window:live@4-replicas#2026-10-14",
+          "by": "SRE",
+          "status": "usable",
+          "receivedAt": "2026-10-14T12:20:00Z",
+          "detail": "live.json, 720 samples at 10 s, capacity '4 replicas'; agon live-window exited 0 (passed)."
+        }
+      ],
+      "annotations": []
+    },
+    {
+      "date": "2026-10-15",
+      "by": "release owner",
+      "note": "Scope revision: an explanation supplied after the fact for an exclusion the original list left blank. The original entry keeps its null; this annotation carries the date the reason was given.",
+      "nominated": [],
+      "selected": [],
+      "received": [],
+      "annotations": [
+        {
+          "id": "persona:file/accessibility-screen-reader",
+          "text": "Excluded on 2026-10-10 because the persona file was not checked in when the run was planned. This reason was not recorded at the time; it is recorded here on 2026-10-15."
+        }
+      ]
+    }
+  ]
+}

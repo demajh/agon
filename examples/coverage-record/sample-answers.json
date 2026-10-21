@@ -1,0 +1,16 @@
+{
+  "reader": "a reader who trusted the success message",
+  "sources": {
+    "sessions:control": "covered",
+    "sessions:treatment": "covered",
+    "population:seed-7-size-40": "covered",
+    "judge:frustration": "covered",
+    "persona:builtin/power-user": "excluded_explained",
+    "scenario:returning-user-bank-connect": "excluded_explained",
+    "persona:file/accessibility-screen-reader": "capture_failure",
+    "live-window:baseline@4-replicas": "covered",
+    "live-window:live@4-replicas": "selection_dispute",
+    "live-window:live@4-replicas#2026-10-14": "covered"
+  },
+  "overall": "covered"
+}

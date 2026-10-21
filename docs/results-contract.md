@@ -110,6 +110,13 @@ The gate is in memory with a serialisable snapshot: `snapshot()` / `RowGate.rest
 `.agon/gate/<reader set>.json` next to `.agon/ledger`. The file exists for counting and for
 restarts. It is not a source of rows to serve.
 
+## When a cited row is missing
+
+The stamp covers rows that exist. A finding can cite a receipt that is no longer there, or that
+its reader cannot reach. What the contract asks for in that case (a signed tombstone for a
+deletion, a dated row for each read, an explicit `never_asked`) is in
+[cited-artifact-absence.md](cited-artifact-absence.md).
+
 ## Open question for reviewers
 
 Should the expiry code live in the same table as the ingest quarantine? Today a row that expires

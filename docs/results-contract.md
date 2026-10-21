@@ -60,6 +60,16 @@ the reader's fields, whatever it is called. The registry holds the field lists s
 comparison is always on fields. `checkRow(row, readerSet, registry)` in `@agon/spec` is the pure
 core of the rule, and it names the missing fields when it refuses.
 
+### A regression case for an unstamped row
+
+[examples/results-contract](../examples/results-contract/README.md) pins the rule from the
+reader's side. One immutable `Result` with no stamp is assessed under two named candidate
+contracts (the published `agon.result.1` and an unpublished `agon.result.2` that adds
+`decision.variant`); the case saves both conditional assessments, keeps the declared version
+`null`, records a validator's guess as a guess, and records the admission (`checkRow`, refused
+with `REQUIRED_SET_UNRESOLVED` and `(unstamped)`) as its own field. Its runner checks that
+changing the inference rule changes only the guess. The design is excelsior's.
+
 ## The reader gate
 
 `RowGate` in `@agon/exporters` holds the rule for one reader (`readerSet`) with a quarantine,

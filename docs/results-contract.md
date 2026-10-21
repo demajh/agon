@@ -65,6 +65,16 @@ asks for more than Agon's writers stamp. [authority-predicate.md](authority-pred
 this to require that every row say which authority it was read under, so that a row complete for
 `agon.result.1` is refused rather than served as authority-valid.
 
+### A regression case for an unstamped row
+
+[examples/results-contract](../examples/results-contract/README.md) pins the rule from the
+reader's side. One immutable `Result` with no stamp is assessed under two named candidate
+contracts (the published `agon.result.1` and an unpublished `agon.result.2` that adds
+`decision.variant`); the case saves both conditional assessments, keeps the declared version
+`null`, records a validator's guess as a guess, and records the admission (`checkRow`, refused
+with `REQUIRED_SET_UNRESOLVED` and `(unstamped)`) as its own field. Its runner checks that
+changing the inference rule changes only the guess. The design is excelsior's.
+
 ## The reader gate
 
 `RowGate` in `@agon/exporters` holds the rule for one reader (`readerSet`) with a quarantine,
@@ -114,6 +124,17 @@ The gate is in memory with a serialisable snapshot: `snapshot()` / `RowGate.rest
 `saveGateSnapshot(path, gate)` / `loadGateSnapshot(path)` for a JSON file, for example
 `.agon/gate/<reader set>.json` next to `.agon/ledger`. The file exists for counting and for
 restarts. It is not a source of rows to serve.
+
+## Combining rows that passed the gate
+
+The gate says whether a row may be used; it says nothing about how rows are combined once they
+pass. A `VariantStats` carries `sessions` (the sessions with a value for the metric) and `mean`
+over those, and the excluded count appears in the metric's `warnings`. A consumer that merges such
+results across personas, models or shards has to add sums, valid counts and exclusions and divide
+at the end, never average means. The [aggregation fixture](../examples/aggregation-fixture/README.md)
+is a dataset and a test that pins this: the same rows merged through six partitionings give the
+same result and exclusion counts, and an all-excluded partition contributes zero valid weight
+rather than a zero-valued observation.
 
 ## Open question for reviewers
 

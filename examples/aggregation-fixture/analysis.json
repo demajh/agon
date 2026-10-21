@@ -1,0 +1,24 @@
+{
+  "runId": "run_aggfix",
+  "control": "control",
+  "method": "fixed",
+  "minSessionsPerVariant": 30,
+  "decision": { "shipIf": 0.95, "killIf": 0.05 },
+  "alpha": 0.05,
+  "clusterBy": [],
+  "stratifyBy": ["persona"],
+  "calibrationProfile": "uncalibrated-v0",
+  "seed": 0,
+  "draws": 2000,
+  "bootstrapSamples": 200,
+  "requirementsDigest": "aggregation-fixture",
+  "metrics": [
+    { "id": "activation", "type": "conversion", "event": "project_created", "primary": true },
+    {
+      "id": "seconds_to_first_project",
+      "type": "duration",
+      "from": "session_start",
+      "to": "project_created"
+    }
+  ]
+}

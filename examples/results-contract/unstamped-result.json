@@ -1,0 +1,57 @@
+{
+  "id": "res_unstamped_regression",
+  "runId": "run_regression_fixture",
+  "method": "bayesian",
+  "control": "control",
+  "primaryMetricId": "activation",
+  "metrics": [
+    {
+      "metricId": "activation",
+      "direction": "increase",
+      "variants": [
+        {
+          "variant": "control",
+          "sessions": 12,
+          "successes": 5,
+          "mean": 0.4167,
+          "stderr": 0.1423,
+          "ci95": [0.1378, 0.6956]
+        },
+        {
+          "variant": "treatment",
+          "sessions": 12,
+          "successes": 8,
+          "mean": 0.6667,
+          "stderr": 0.1361,
+          "ci95": [0.3999, 0.9334]
+        }
+      ],
+      "comparisons": [
+        {
+          "variant": "treatment",
+          "control": "control",
+          "lift": 0.6,
+          "liftCi95": [-0.3, 2.1],
+          "pBest": 0.89,
+          "pBeatControl": 0.89,
+          "expectedLoss": 0.03
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "decision": {
+    "verdict": "continue",
+    "rationale": "Posterior probability of beating control is 0.89, below the 0.95 the analysis asks for"
+  },
+  "calibration": {
+    "profile": "uncalibrated-v0",
+    "note": "Simulated results are a forecast; this profile has no benchmark agreement data yet."
+  },
+  "sessionsAnalyzed": 24,
+  "computedAt": "2026-10-09T08:00:00.000Z",
+  "engine": { "name": "agon-stats", "version": "0.0.1" },
+  "kind": "model",
+  "assumptions": ["sessions were simulated by LLM-driven personas, not real users"],
+  "requirementsDigest": "3b1e8c0a5d7f4e2b9c6a1d0f8e7b6a5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a"
+}

@@ -3,8 +3,10 @@
 Every run ends with a typed `termination` object on its run record (`run.json` in local mode,
 `GET /v1/runs/{id}` on the server, `agon run --json`). It says how the run ended, how long it
 took against its cap, how much of the plan executed, and, when the run stopped early, what it
-still produced. A run that hits its wall-clock cap is a **partial result, not a failure**, and
-`agon run` exits with a code CI can map to "neutral".
+still produced. A run that hits its wall-clock cap after some sessions reached an outcome is a
+**partial result, not a failure**, and `agon run` exits with a code CI can map to "neutral";
+a run the cap stopped before any session had an outcome exits with the same code and must be
+told apart by `sessionsExecuted` (see the CI example below).
 
 ## The time cap
 
@@ -68,7 +70,7 @@ names the phase of the session that threw: `setup hook`, `adapter open`, `step 3
 |---|---|---|
 | `completed` | 0 | the verdict decides (`agon compare`) |
 | `failed` | 1 | failure |
-| `time_cap_reached` | 3 | neutral: nothing is wrong with the product, the run was cut short |
+| `time_cap_reached` | 3 | neutral when `sessionsExecuted` > 0: nothing is wrong with the product, the run was cut short; failure when it is 0, nothing was measured |
 | `infra_aborted` | 4 | neutral or failure of the pipeline, never of the product |
 | `cancelled` | 5 | cancelled (not produced by `agon run` today; reserved for the server's cancel path) |
 
@@ -76,17 +78,37 @@ A config or usage error before the run starts exits 1 (or 4 when the adapter or 
 refused to start). The mapping is exported from `@agon/spec` as `TERMINATION_EXIT_CODES` /
 `terminationExitCode(kind)` so wrappers and the GitHub Action can share it.
 
-A GitHub Actions step, for example:
+A run cut short and a run that never measured anything must exit differently. Exit code 3
+covers both: when the cap fires before any session reaches an outcome, `counts.completed` and
+`counts.failed` are both 0, every started session is in `counts.interrupted`, the kind is
+`time_cap_reached` and `termination.sessionsExecuted` is 0. The engine records that as a run
+with no evidence, not as a partial result, so a CI step that maps exit code 3 to a notice must
+also check `sessionsExecuted` before it goes green. skitter-swarmmemo pointed this out when an
+earlier version of the example below mapped exit code 3 to `exit 0` without the check: "If the
+cap fires before any session reaches an outcome, then completed=0 and failed=0, the kind is
+time_cap_reached, exit 3, and sessionsExecuted is 0. The suggested `3) ... exit 0` turns 0/N
+executed into a green step with a ::notice."
+
+A GitHub Actions step, for example (`run.json` here is the `--json` output of the command, which
+carries `termination` at its top level, the same object as the `run.json` under the output
+directory):
 
 ```sh
 pnpm agon run agon.yaml --json > run.json; code=$?
 case $code in
   0) ;;                       # compare and let the verdict decide
-  3) echo "::notice::time cap reached: partial result" ; exit 0 ;;
+  3) executed=$(jq .termination.sessionsExecuted run.json)
+     [ "$executed" -gt 0 ] || { echo "::error::time cap reached before any session had an outcome"; exit 1; }
+     echo "::notice::time cap reached: partial result ($executed/$(jq .termination.sessionsPlanned run.json) sessions executed)"
+     exit 0 ;;
   4) echo "::warning::infrastructure failed" ; exit 0 ;;
   *) exit $code ;;
 esac
 ```
+
+With this check the step colour matches what the engine already records: a cap that stopped the
+run after some sessions had outcomes is a neutral notice over a partial result, and a cap that
+stopped it before any did is red, because the counts the analysis would run on are empty.
 
 ## `agon run --json`
 

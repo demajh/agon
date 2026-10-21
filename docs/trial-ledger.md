@@ -51,7 +51,7 @@ discarded ones included (never below 1). `agon compare` reads the ledger, passes
 
 - `fixed`: a variant is a ship candidate only if, besides the existing significance test, its
   z-statistic against control exceeds the quantile of the max of M standard normals,
-  `Phi^-1((1 - alpha)^(1/M))`: 1.645 at M=1, 2.69 at M=7, 3.283 at M=100 for alpha 0.05. At M=1
+  `Phi^-1((1 - alpha)^(1/M))`: 1.645 at M=1, 2.44 at M=7, 3.283 at M=100 for alpha 0.05. At M=1
   the bar sits below the two-sided 1.96 of the existing test, so nothing changes; at large M the
   bar dominates. The kill rule is not raised.
 - `bayesian` and `sequential`: M is reported and the rationale warns that P(best) is not
@@ -180,6 +180,51 @@ control         3       1       1       0       1
   no void rows: nothing in this repository writes event "voided" yet (docs/trial-ledger.md)
   opened = filled + missed + voided + open; a slot that stays open is an omission, not a result
 ```
+
+## Fixing M at run time
+
+The ledger counts trials, but nothing above ties a verdict to the count that was true when the
+run happened. `agon compare` resolves M from whichever `--ledger-dir` it is given at compare time
+(default `<parent of the output directory>/.agon/ledger`), `countTrials` floors an empty
+directory at 1, and `run.json` stores `sampleHash` but neither `trials` nor the ledger
+directory. So a compare pointed at an empty directory, by mistake or on purpose, lowers the fixed
+bar from 2.44 (M=7) to 1.645 and the rationale still reads as if the ledger had been consulted.
+skitter-swarmmemo pointed this out and proposed the fix in Agon's own terms: "fix the parameter
+at run time. Write `trials` and the resolved ledger path into run.json at start. compare should
+refuse, or loudly flag, an M below the recorded one or a different ledger path".
+
+`scripts/pin-trials.mjs` does that around the CLI, which keeps reading `run.json` through
+`RunSchema` and ignores the extra keys. It needs `pnpm build`.
+
+```sh
+pnpm agon run agon.yaml -o ./agon-out                       # prints M and the ledger dir
+node scripts/pin-trials.mjs pin ./agon-out                  # writes them into run.json
+node scripts/pin-trials.mjs compare ./agon-out --method fixed   # check, then agon compare
+```
+
+- `pin <run dir | out dir> [--ledger-dir <dir>]` resolves the ledger exactly as `agon run` and
+  `agon compare` do, reads `<ledgerDir>/<sampleHash>.jsonl`, and writes `trials` (M at that
+  moment), `ledgerDir`, `ledgerPath`, `ledgerEntries` and `pinnedAt` into `run.json`. Run it
+  straight after `agon run`: because `started` entries are written before the first session, the
+  ledger then holds exactly the count `agon run` printed, unless another run against the same
+  sample started in between. A second `pin` on the same run is refused; the pin is written once.
+- `check <run dir | out dir> [--ledger-dir <dir>]` resolves the ledger from the same arguments
+  `agon compare` would be given and refuses with exit code 2 when the path differs from the pinned
+  one, when M is below the pinned count, or when the append-only file holds fewer entries than it
+  did (the case the floor hides: a deleted file counts as M=1, which is also the pinned value of a
+  one-treatment run). It passes when M matches, and passes with a flag line when M rose, since
+  more variants were started against the sample since the run and the higher count is the right
+  one. Every outcome prints the path it actually read, with the entry count, or `missing; an
+  empty ledger counts as M=1`. `--json` prints the same report as an object with a `reason`.
+- `compare <run dir | out dir> [agon compare options...]` runs the check on stderr, stops before
+  `agon compare` when it refuses, and otherwise hands the same arguments to
+  `packages/cli/dist/bin.js compare`, so one command line names one ledger for both.
+
+The pin lives in the run directory, so it is as tamperable as `sessions.jsonl`; what it closes is
+the honest-mistake path, a compare run from another working directory or with another
+`--ledger-dir`, and it makes the dishonest path a visible edit of `run.json` rather than an
+argument. `node --test scripts/pin-trials.test.mjs` records a run with the engine's fakes and
+exercises every refusal.
 
 ## The open gap
 

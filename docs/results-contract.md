@@ -136,6 +136,78 @@ is a dataset and a test that pins this: the same rows merged through six partiti
 same result and exclusion counts, and an all-excluded partition contributes zero valid weight
 rather than a zero-valued observation.
 
+## The subject under test
+
+The stamp says which contract a row was written under. It says nothing about *what was tested*.
+A `ship` result stays complete for `agon.result.1` after the treatment is rebuilt, redeployed or
+replaced, so a reader that checks only `schemaVersion` and `requiredSet` keeps serving a pass for
+software that no longer exists. skitter-swarmmemo raised this on Moltbook, and asked:
+"Which side do you store for agon's results: the digest of the generated software under test, or
+only its build id?"
+
+### What Agon stores today
+
+Neither, on the result. A `Result` carries `runId`, and the run record (`run.json`) snapshots the
+environment config, so each variant's spec (`url`, `image`, `command`, `env`, `headers`, `gitRef`)
+is recoverable from the run. `gitRef` is whatever string the config gave, not a resolved commit,
+and nothing hashes the artifact. The evaluation ledger's `variantKey` (`<variant>@<hash of its
+spec>`, [trial-ledger.md](trial-ledger.md)) hashes that *declaration*. That catches a changed url,
+image, command or ref. It does not catch new bytes behind the same url, a retagged `:latest`, or a
+`gitRef: main` that has moved on.
+
+### The field
+
+Store both, and key on the digest. A result names one subject per variant of the run, because a
+verdict is a comparison and a moved control invalidates it as surely as a moved treatment:
+
+```json
+"subjects": [
+  { "variant": "control",   "commitSha": "<40 hex>", "artifactDigest": "sha256:<64 hex>" },
+  { "variant": "treatment", "commitSha": "<40 hex>", "artifactDigest": "sha256:<64 hex>" }
+]
+```
+
+- `artifactDigest` is the identity: the sha256 of the artifact the sessions ran against (the image
+  digest for an `image` variant, the built bundle or binary otherwise). Same bytes, same subject.
+- `commitSha` is provenance: the full commit the artifact was built from, so a reader can find the
+  source and rebuild. It is not the identity, because one commit can build different bytes
+  (dependency drift, a non-reproducible build) and a docs-only commit can build the same bytes.
+- A build id alone is neither. It names a CI job, which can be re-run, and says nothing about the
+  bytes.
+
+A writer refuses to stamp a row whose `commitSha` is a ref (`main`) or whose `artifactDigest` is a
+build number, the way `stampRow` refuses a row missing a field: a subject must be a resolved
+value or the row does not claim it.
+
+No set in `REQUIRED_SETS` has `subjects` yet, and no exporter writes it. A reader that relies on
+it publishes the set itself, as [authority-predicate.md](authority-predicate.md) does:
+`example.result_subject.1` is `agon.result.1` plus `subjects`, and a stock `agon.result.1` row is
+refused with `REQUIRED_SET_NOT_SUPERSET` before anything else is read from it.
+
+### How a reader treats a digest that no longer matches
+
+Freshness is not a gate check. The gate grades the row's shape. Whether a subject still matches
+depends on the build the reader would act on now, which is not in the row, so the reader checks it
+at serve time, per variant:
+
+| what the reader finds | grade | served as a current pass |
+|---|---|---|
+| every variant's current digest equals the row's | `SUBJECT_CURRENT` | yes |
+| the same, but a commit moved (same bytes) | `SUBJECT_CURRENT`, the move noted | yes |
+| any variant's current digest differs, whatever its commit | `SUBJECT_STALE` | no |
+| a variant has no current digest the reader can compute, or is no longer built | `SUBJECT_UNVERIFIABLE` | no |
+
+A stale result is not wrong and is never rewritten. It remains the receipt of what was tested on
+the old bytes, as a result keeps the `requirementsDigest` it was accepted under
+([receipts-and-findings.md](receipts-and-findings.md)). What it loses is the right to stand for
+the current build. The decision it supported has to be re-earned by a run on the new digest.
+`SUBJECT_UNVERIFIABLE` is kept apart from `SUBJECT_STALE` so that "we could not check" is counted
+and never passes for "it moved", nor for "it is fine".
+
+[examples/subject-digest](../examples/subject-digest/README.md) runs this: eight result rows
+against seven builds, including the case a commit or build id gets wrong (same commit, other
+bytes) and the case it gets wrong the other way (new commit, same bytes).
+
 ## When a cited row is missing
 
 The stamp covers rows that exist. A finding can cite a receipt that is no longer there, or that

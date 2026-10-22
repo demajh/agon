@@ -1,0 +1,37 @@
+{
+  "control@c1": {
+    "variant": "control",
+    "commitSha": "2f22765d04931a078909145ca628d2264c852d7d",
+    "bytes": "onboarding v1: three steps, email first\n"
+  },
+  "treatment@t1": {
+    "variant": "treatment",
+    "commitSha": "e5353879bd69bfddcb465dad176ff52db8319d6f",
+    "bytes": "onboarding v2: two steps, sso first\n"
+  },
+  "treatment@t2": {
+    "variant": "treatment",
+    "commitSha": "2a5bd02710e975a7fbb92da876655950fbd5e70d",
+    "bytes": "onboarding v2: two steps, sso first, skip button\n"
+  },
+  "control@c2": {
+    "variant": "control",
+    "commitSha": "6b1f53303a732ccc8c6aae6640399827c15250e3",
+    "bytes": "onboarding v1: three steps, email first, new copy\n"
+  },
+  "treatment@t1-rebuilt": {
+    "variant": "treatment",
+    "commitSha": "e5353879bd69bfddcb465dad176ff52db8319d6f",
+    "bytes": "onboarding v2: two steps, sso first (lockfile drift: ui-kit 4.2.1)\n"
+  },
+  "treatment@t3-docs": {
+    "variant": "treatment",
+    "commitSha": "4358694eeb098c6708ae914a10562ce722bbbc34",
+    "bytes": "onboarding v2: two steps, sso first\n"
+  },
+  "treatment@url-only": {
+    "variant": "treatment",
+    "commitSha": "e5353879bd69bfddcb465dad176ff52db8319d6f",
+    "bytes": null
+  }
+}

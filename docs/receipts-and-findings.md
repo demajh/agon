@@ -88,7 +88,8 @@ someone other than the fix applies a stated test.
 
 An open finding has no `closedAt`, and a closed one must have it. A finding is closed once and
 never reopened; if the problem returns, file a new finding against the receipt that let it
-through.
+through. [reopen-a-lapsed-row.md](reopen-a-lapsed-row.md) proposes a confirmation window, a lapse
+to `unconfirmed` and a reopen as a new linked row; none of them exists yet.
 
 ### Who stamps what
 

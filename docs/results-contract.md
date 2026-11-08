@@ -136,6 +136,105 @@ is a dataset and a test that pins this: the same rows merged through six partiti
 same result and exclusion counts, and an all-excluded partition contributes zero valid weight
 rather than a zero-valued observation.
 
+## Rates carry their eligible rows
+
+The gate checks that a rate's fields are present. It does not check that the rate was computed
+over anything. RushantsBro put the gap as a question on Moltbook: "Does your results contract
+require a denominator to declare how many of its rows were eligible, or only how the numerator
+was read?" Today, only how the numerator was read.
+
+### What Agon reports today
+
+A `VariantStats` carries `sessions` (the sessions with a value for the metric), `successes` for a
+binary metric, and `mean`. That is the numerator and the measured count. The variant's other
+sessions, and why they were left out, appear only as warning strings. In `agon-stats`:
+
+- **An empty variant prints as zero.** When no session of a variant has a value for a metric,
+  `analyze` writes `sessions: 0`, `mean: 0.0`, `stderr: 0.0`, `ci95: [0, 0]`, and the comparison
+  against control a `lift` of `-1.0` (−100%). The `means` array is filled with zeros where the
+  count is 0. Only a warning (`treatment: 6 of 6 sessions have no value for ...; excluded`) says
+  the zero is not an observation.
+- **A variant with no finished session disappears.** Sessions without an outcome are dropped
+  before analysis (`build_result`). A variant all of whose sessions lack one is absent from every
+  metric's `variants`, and the count lands as one warning on the first metric, with no variant
+  named (`4 session(s) without an outcome were excluded from the analysis`).
+- **A conversion is never unmeasured.** An absent conversion is read as "not converted", so every
+  finished session is in the denominator, including one that never reached the step the event
+  belongs to.
+
+`scripts/run-report.mjs` already prints a pass rate over nothing as `n/a (0 completed)`
+([run-termination.md](run-termination.md#reading-the-per-variant-counts)). The `Result` has no
+equivalent.
+
+### The rate row
+
+A rate (any per-variant value computed as a numerator over a count of rows, so a proportion or a
+mean) carries its denominator as four counts, kept apart from the numerator:
+
+```json
+{
+  "metricId": "activation",
+  "variant": "treatment",
+  "numerator": 2,
+  "denominator": {
+    "raw": 8,
+    "ineligible": [{ "reason": "no_outcome", "rows": 2 }],
+    "eligible": 6,
+    "measured": 5
+  }
+}
+```
+
+| count | meaning |
+|---|---|
+| `raw` | rows in scope: the variant's sessions in the run |
+| `ineligible` | rows the metric does not apply to, as `{ reason, rows }` entries; every entry names its reason |
+| `eligible` | rows the metric applies to; `raw = eligible + Σ ineligible.rows` |
+| `measured` | eligible rows whose value was read; `measured ≤ eligible`, and `eligible − measured` is printed beside the value when it is not 0 |
+
+The value is `numerator ÷ measured`. With `eligible = 0` or `measured = 0` it is **undefined** and
+prints as `undefined (0 eligible: 6 no_outcome)` or `undefined (0 of 6 eligible measured)`, never
+as `0.00`. "0 of 6 eligible sessions converted" is a zero; "6 sessions, none of them finished" is
+not a rate at all, though both have numerator 0 and raw denominator 6.
+
+Ineligible and unmeasured are two different counts on purpose. A session that never reached the
+step a duration ends on is ineligible for it (the metric does not apply); a session that reached
+it and whose value the recorder lost is eligible and unmeasured. `agon-stats` cannot tell the two
+apart today: both are NaN, and both go into one warning. A row derived from today's output can
+only put them in `eligible − measured`, which keeps the value undefined or flagged rather than
+quietly smaller.
+
+Merging rate rows adds all four counts, `ineligible` by reason, and the numerators, then divides
+once, as the [aggregation fixture](../examples/aggregation-fixture/README.md) does for sums. A
+shard with nothing eligible contributes zero rows, not a zero rate.
+
+### The reader gate for rates
+
+A reader that relies on this publishes the set itself, as for the subject under test below:
+`example.rate_row.1` requires `numerator` and the four `denominator.*` counts. A producer whose
+contract records only the numerator and the raw denominator is refused with
+`REQUIRED_SET_NOT_SUPERSET` before anything else is read. Presence is not enough, because the stamp
+counts `null` as present, so the reader grades the counts of every row that passed:
+
+| grade | when | served as a rate |
+|---|---|---|
+| `RATE_DEFINED` | the counts add up and `measured > 0` | yes, with `eligible − measured` beside the value when not 0 |
+| `RATE_ELIGIBLE_MISSING` | `eligible` is `null` or not a count | no |
+| `RATE_ELIGIBLE_ZERO` | `eligible = 0` | no; prints `undefined (0 eligible: <reasons>)` |
+| `RATE_UNMEASURED` | `eligible > 0`, `measured = 0` | no; prints `undefined (0 of N eligible measured)` |
+| `RATE_REASON_MISSING` | an `ineligible` entry has no reason | no |
+| `RATE_COUNTS_INCONSISTENT` | `raw ≠ eligible + Σ ineligible`, `measured > eligible`, or `numerator > measured` | no |
+
+A refused row is still a true record of its counts, and a reader keeps it and counts it. What it
+loses is the right to be read as a number. A comparison against a variant whose rate is not
+`RATE_DEFINED` has no lift.
+
+No set in `REQUIRED_SETS` has these fields, `VariantStats` does not carry `raw`, `eligible` or
+`ineligible`, and no exporter writes a rate row. [examples/eligible-denominator](../examples/eligible-denominator/README.md)
+runs both halves: `agon-stats` on a three-variant fixture, showing the zero mean, the −100% lift
+and the vanished variant beside the denominator the contract asks for, and the gate on ten rate
+rows, including the pair that differs only in `eligible`.
+
 ## The subject under test
 
 The stamp says which contract a row was written under. It says nothing about *what was tested*.

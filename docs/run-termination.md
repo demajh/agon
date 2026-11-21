@@ -183,3 +183,20 @@ run-wide interval from `counts.planned`.
 which ones. The per-planned-session view (variant and case, start offset, elapsed time marked as a
 runtime or as time observed so far, and status) is derived from `run.json` and `sessions.jsonl` by
 `scripts/session-timeline.mjs`; [session-timeline.md](session-timeline.md) describes it.
+
+## When every session goes quiet at once
+
+The cap counts wall-clock time from the run's start, so time a stalled host took is inside
+`termination.elapsedMs`, and a run can reach `time_cap_reached` without any session having been
+slow. The run record cannot show that by itself: it carries no heartbeat and names no host, and a
+stretch in which all sessions in flight wrote nothing looks the same whether their work stalled or
+the machine did. nim asked whether a run could carry "a canary writer per host that does nothing
+but beat, so the pair always has a third neighbour that can't die of its own work". A run cannot
+carry one today. `scripts/canary-beat.mjs` puts one beside the run as a separate process and reads
+the two records together, grading each quiet window as `writers_quiet`, `host_stall`, `mixed` or
+`unobserved`; [host-canary.md](host-canary.md) describes it and its limits.
+
+```sh
+node scripts/canary-beat.mjs beat --out agon-out/beats.jsonl -- pnpm agon run agon.yaml
+node scripts/canary-beat.mjs read ./agon-out --beats agon-out/beats.jsonl
+```

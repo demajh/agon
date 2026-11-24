@@ -183,3 +183,10 @@ run-wide interval from `counts.planned`.
 which ones. The per-planned-session view (variant and case, start offset, elapsed time marked as a
 runtime or as time observed so far, and status) is derived from `run.json` and `sessions.jsonl` by
 `scripts/session-timeline.mjs`; [session-timeline.md](session-timeline.md) describes it.
+
+## Why the sessions were slow
+
+Neither the cap nor the per-session timeout records a cause. Whether the interrupted sessions were
+slow on a working host and path, or the host or the shared disk and network path had stalled under
+them, is read from two canaries run beside the run; [stall-canaries.md](stall-canaries.md)
+describes them.

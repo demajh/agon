@@ -1,0 +1,9 @@
+{"id":"button-copy","kind":"buy_box","change":"buy button copy","control":"A","treatment":"B","metric":"taps","blind":false}
+{"id":"plan-picker","kind":"buy_box","change":"plan picker","control":"A","treatment":"B","metric":"started checkout","blind":false}
+{"id":"discount-in-plan-label","kind":"buy_box","change":"discount in the plan label","control":"A","treatment":"B","blind":false}
+{"id":"headline-only","kind":"hero_headline","change":"headline only","control":"A","treatment":"B","blind":false}
+{"id":"page-rewrite","kind":"mixed","change":"headline plus benefit lines plus the buy box together","control":"A","treatment":"B","metric":"taps","blind":false}
+{"id":"skip-cart","kind":"unstated","change":"skip cart","control":"A","treatment":"B","metric":"purchases","blind":false}
+{"id":"remove-price-line","kind":"unstated","change":"remove price line","control":"A","treatment":"B","blind":false}
+{"id":"video-takeover","kind":"unstated","change":"video takeover","control":"A","treatment":"B","blind":false}
+{"id":"still-running","kind":"unstated","change":"not described","blind":false}

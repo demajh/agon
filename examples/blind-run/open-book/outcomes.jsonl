@@ -1,0 +1,8 @@
+{"test":"button-copy","control":{"visitors":2009,"conversions":4},"treatment":{"visitors":2039,"conversions":11},"postedP":0.075}
+{"test":"plan-picker","control":{"visitors":2011,"conversions":40},"treatment":{"visitors":2082,"conversions":58},"postedP":0.096}
+{"test":"discount-in-plan-label","control":{"visitors":5543,"conversions":175},"treatment":{"visitors":5581,"conversions":195},"postedP":0.322}
+{"test":"headline-only","control":{"visitors":11255,"rate":0.0099},"treatment":{"visitors":11265,"rate":0.0101},"posted":"flat"}
+{"test":"page-rewrite","control":{"visitors":4041,"conversions":40},"treatment":{"visitors":4075,"conversions":29},"postedP":0.172}
+{"test":"skip-cart","control":{"visitors":7836,"conversions":4},"treatment":{"visitors":7918,"conversions":2}}
+{"test":"remove-price-line","control":{"visitors":1020},"treatment":{"visitors":927},"posted":"flat"}
+{"test":"video-takeover","control":{"visitors":324},"treatment":{"visitors":322},"posted":"flat"}

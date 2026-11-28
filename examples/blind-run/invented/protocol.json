@@ -1,0 +1,18 @@
+{
+  "set": "invented-store-tests",
+  "alpha": 0.05,
+  "kinds": ["hero_headline", "buy_box"],
+  "real": "two-sided pooled two-proportion z-test on conversions over visitors; p < alpha with the treatment ahead is B, with the control ahead is A, anything else is flat",
+  "calls": {
+    "ship": "B",
+    "kill": "A",
+    "inconclusive": "flat",
+    "continue": "no call"
+  },
+  "analysis": {
+    "method": "bayesian",
+    "minSessionsPerVariant": 30,
+    "decision": { "shipIf": 0.95, "killIf": 0.05 }
+  },
+  "note": "Every test, call and outcome in this set is invented to show the report. No Agon run produced these calls."
+}
